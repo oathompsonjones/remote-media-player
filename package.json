@@ -1,0 +1,37 @@
+{
+    "name": "next-init",
+    "version": "0.0.1",
+    "description": "",
+    "repository": {
+        "url": "https://github.com/oathompsonjones/next-init.git"
+    },
+    "scripts": {
+        "dev": "next dev",
+        "build": "next build",
+        "start": "next start",
+        "lint": "eslint . && pnpm --dir display-device lint"
+    },
+    "author": "oathompsonjones",
+    "license": "MIT",
+    "devDependencies": {
+        "@oathompsonjones/eslint-config": "^1.5.9",
+        "@oathompsonjones/ts-config": "^1.0.0",
+        "@types/node": "^26.6.1",
+        "@types/react": "19.3.0",
+        "@types/react-dom": "19.3.0",
+        "typescript": "^7.0.2"
+    },
+    "dependencies": {
+        "@emotion/react": "^11.14.0",
+        "@emotion/styled": "^11.14.1",
+        "@mui/icons-material": "^9.4.0",
+        "@mui/lab": "9.0.0-beta.9",
+        "@mui/material": "^9.4.0",
+        "@svgr/webpack": "^8.1.0",
+        "next": "16.3.5",
+        "react": "19.3.0",
+        "react-dom": "19.3.0",
+        "sharp": "^0.35.4"
+    },
+    "packageManager": "pnpm@9.9.0+sha512.60c18acd138bff695d339be6ad13f7e936eea6745660d4cc4a776d5247c540d0edee1a563695c183a66eb917ef88f2b4feb1fc25f32a7adcadc7aaf3438e99c1"
+}

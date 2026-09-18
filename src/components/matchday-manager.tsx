@@ -1,0 +1,384 @@
+"use client";
+
+import {
+    Alert,
+    Box,
+    Button,
+    Container,
+    LinearProgress,
+    Paper,
+    Stack,
+    Table,
+    TableBody,
+    TableCell,
+    TableContainer,
+    TableRow,
+    TextField,
+    Typography,
+} from "@mui/material";
+import type { ChangeEvent, FormEvent, ReactNode } from "react";
+import { OpenInNew } from "@mui/icons-material";
+import type { VideoMetadata } from "lib/matchday";
+import { useState } from "react";
+
+type Props = { readonly authenticated: boolean; readonly initialMetadata: VideoMetadata | null; };
+
+type UploadError = { readonly error?: string; };
+
+/**
+ * Formats a byte count for display.
+ * @param bytes - The byte count.
+ * @returns The formatted byte count.
+ */
+function formatBytes(bytes: number): string {
+    const units = ["bytes", "KB", "MB", "GB"];
+    let value = bytes;
+    let unit = 0;
+
+    while (value >= 1024 && unit < units.length - 1) {
+        value /= 1024;
+        unit += 1;
+    }
+
+    return `${value.toFixed(unit === 0 ? 0 : 2)} ${units[unit]}`;
+}
+
+/**
+ * Formats a duration in seconds as minutes and seconds.
+ * @param duration - The duration in seconds.
+ * @returns The formatted duration.
+ */
+function formatDuration(duration?: number): string {
+    if (duration === undefined)
+        return "Unknown";
+
+    const seconds = Math.round(duration);
+
+    return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+}
+
+/**
+ * Formats an upload timestamp in UTC.
+ * @param uploadedAt - The ISO timestamp.
+ * @returns The formatted timestamp.
+ */
+function formatUploadedAt(uploadedAt: string): string {
+    const date = new Date(uploadedAt);
+    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const day = date.getUTCDate();
+    const month = months[date.getUTCMonth()];
+    const year = date.getUTCFullYear();
+    const hours = String(date.getUTCHours()).padStart(2, "0");
+    const minutes = String(date.getUTCMinutes()).padStart(2, "0");
+
+    return `${day} ${month} ${year} at ${hours}:${minutes}`;
+}
+
+/**
+ * Extracts an upload error message from a response.
+ * @param responseText - The response body.
+ * @returns The error message.
+ */
+function parseUploadError(responseText: string): string {
+    const response = JSON.parse(responseText) as UploadError;
+
+    return response.error ?? "Upload failed; the existing video remains active.";
+}
+
+/**
+ * Renders the login and video management workflow.
+ * @param root0 - The component props.
+ * @param root0.authenticated - The initial authentication state.
+ * @param root0.initialMetadata - The current video metadata.
+ * @returns The matchday manager UI.
+ */
+// eslint-disable-next-line max-lines-per-function
+export function MatchdayManager({ authenticated, initialMetadata }: Props): ReactNode {
+    const [loggedIn, setLoggedIn] = useState(authenticated);
+    const [metadata, setMetadata] = useState(initialMetadata);
+    const [username, setUsername] = useState("");
+    const [password, setPassword] = useState("");
+    const [file, setFile] = useState<File | null>(null);
+    const [progress, setProgress] = useState(0);
+    const [state, setState] = useState("Ready");
+    const [error, setError] = useState("");
+
+    /**
+     * Submits the login form.
+     * @param event - The form submit event.
+     */
+    async function login(event: FormEvent<HTMLFormElement>): Promise<void> {
+        event.preventDefault();
+        setError("");
+        const headers = new Headers();
+
+        headers.set("content-type", "application/json");
+        const response = await fetch("/api/matchday/login", {
+            body: JSON.stringify({ password, username }),
+            headers,
+            method: "POST",
+        });
+
+        if (!response.ok) {
+            setError("That username or password was not accepted.");
+
+            return;
+        }
+
+        setLoggedIn(true);
+        setPassword("");
+    }
+
+    /**
+     * Handles a selected video file.
+     * @param event - The file input change event.
+     */
+    function chooseFile(event: ChangeEvent<HTMLInputElement>): void {
+        const selected = event.target.files?.[0] ?? null;
+
+        setFile(selected);
+        setError("");
+        setState(selected ? "Ready to upload" : "Ready");
+        setProgress(0);
+    }
+
+    /**
+     * Uploads and activates the selected video.
+     * @param event - The form submit event.
+     */
+    function upload(event: FormEvent<HTMLFormElement>): void {
+        event.preventDefault();
+
+        if (!file) {
+            setError("Choose an MP4 first.");
+
+            return;
+        }
+
+        setError("");
+        setState("Uploading");
+        setProgress(0);
+        const request = new XMLHttpRequest();
+
+        request.upload.onprogress = (progressEvent): void => {
+            if (progressEvent.lengthComputable)
+                setProgress(Math.round(progressEvent.loaded / progressEvent.total * 100));
+        };
+        request.onload = (): void => {
+            if (request.status >= 200 && request.status < 300) {
+                setMetadata(JSON.parse(request.responseText) as VideoMetadata);
+                setState("Active");
+                setFile(null);
+                setProgress(100);
+            } else {
+                setState("Upload failed");
+                setError(parseUploadError(request.responseText));
+            }
+        };
+        request.onerror = (): void => {
+            setState("Upload failed");
+            setError("The connection failed; the existing video remains active.");
+        };
+        request.open("POST", "/api/matchday/upload");
+        request.setRequestHeader("content-type", "video/mp4");
+        request.setRequestHeader("x-matchday-filename", file.name);
+        request.send(file);
+    }
+
+    /**
+     * Handles login form submission.
+     * @param event - The form submit event.
+     */
+    function handleLoginSubmit(event: FormEvent<HTMLFormElement>): void {
+        void login(event);
+    }
+
+    /**
+     * Handles username changes.
+     * @param event - The input change event.
+     */
+    function handleUsernameChange(event: ChangeEvent<HTMLInputElement>): void {
+        setUsername(event.target.value);
+    }
+
+    /**
+     * Handles password changes.
+     * @param event - The input change event.
+     */
+    function handlePasswordChange(event: ChangeEvent<HTMLInputElement>): void {
+        setPassword(event.target.value);
+    }
+
+    if (!loggedIn) {
+        return (
+            <Container component="main" maxWidth="sm" sx={{ py: { md: 8, xs: 5 } }}>
+                <Paper sx={{ p: { md: 4, xs: 3 } }} variant="outlined">
+                    {/* eslint-disable-next-line react/jsx-no-bind */}
+                    <Stack component="form" onSubmit={handleLoginSubmit} spacing={2}>
+                        <Typography
+                            sx={{
+                                fontSize: { md: "4.5rem", xs: "2.75rem" },
+                                lineHeight: 0.94,
+                            }}
+                            variant="h1"
+                        >
+                            Matchday control
+                        </Typography>
+                        <Typography color="text.secondary">
+                            Sign in to manage the single video shown across the clubhouse TVs.
+                        </Typography>
+                        {/* eslint-disable react/jsx-no-bind */}
+                        <TextField
+                            autoComplete="username"
+                            label="Username"
+                            onChange={handleUsernameChange}
+                            required
+                            value={username}
+                        />
+                        <TextField
+                            autoComplete="current-password"
+                            label="Password"
+                            onChange={handlePasswordChange}
+                            required
+                            type="password"
+                            value={password}
+                        />
+                        {/* eslint-enable react/jsx-no-bind */}
+                        <Button size="large" type="submit" variant="contained">Sign in</Button>
+                        {error ? <Alert severity="error">{error}</Alert> : null}
+                    </Stack>
+                </Paper>
+            </Container>
+        );
+    }
+
+    return (
+        <Container component="main" maxWidth="lg" sx={{ py: { md: 8, xs: 5 } }}>
+            <Stack spacing={1.5} sx={{ mb: 5 }}>
+                <Box>
+                    <Typography color="primary" sx={{ fontWeight: 700 }} variant="overline">
+                        Clubhouse display
+                    </Typography>
+                    <Typography
+                        sx={{
+                            fontSize: { md: "4.75rem", xs: "2.75rem" },
+                            lineHeight: 0.94,
+                            mt: 1,
+                        }}
+                        variant="h1"
+                    >
+                        Video Uploader
+                    </Typography>
+                    <Typography color="secondary" sx={{ fontSize: "1.2rem", mt: 1 }}>
+                        Only one video can be uploaded at a time.
+                    </Typography>
+                </Box>
+            </Stack>
+            <Box sx={{ display: "grid", gap: 2, gridTemplateColumns: { md: "1.25fr .75fr", xs: "1fr" } }}>
+                <Paper sx={{ p: { md: 3.5, xs: 2.5 } }} variant="outlined">
+                    <Typography color="primary" sx={{ fontWeight: 700 }} variant="overline">
+                        Current video
+                    </Typography>
+                    {metadata
+                        ? <Stack spacing={3} sx={{ mt: 2 }}>
+                            <Typography
+                                color="secondary"
+                                sx={{ fontSize: "2rem", overflowWrap: "anywhere" }}
+                                variant="h2"
+                            >
+                                {metadata.filename}
+                            </Typography>
+                            <TableContainer>
+                                <Table size="small" sx={{ borderColor: "primary.main", borderTop: 1 }}>
+                                    <TableBody>
+                                        {Object.entries({
+                                            Codec: metadata.videoCodec ?? "Unknown",
+                                            Duration: formatDuration(metadata.duration),
+                                            Resolution: `${metadata.width} × ${metadata.height}`,
+                                            Size: formatBytes(metadata.size),
+                                            Uploaded: formatUploadedAt(metadata.uploadedAt),
+                                        }).map(([label, value]): ReactNode => (
+                                            <TableRow key={label}>
+                                                <TableCell
+                                                    sx={{
+                                                        borderColor: "primary.main",
+                                                        fontWeight: 700,
+                                                        letterSpacing: ".08em",
+                                                        textTransform: "uppercase",
+                                                    }}
+                                                    variant="head"
+                                                >
+                                                    {label}
+                                                </TableCell>
+                                                <TableCell
+                                                    align="right"
+                                                    sx={{
+                                                        borderColor: "primary.main",
+                                                        color: "secondary.main",
+                                                        fontWeight: 500,
+                                                    }}
+                                                >
+                                                    {value}
+                                                </TableCell>
+                                            </TableRow>
+                                        ))}
+                                    </TableBody>
+                                </Table>
+                            </TableContainer>
+                            <Button
+                                color="secondary"
+                                href="/current.mp4"
+                                rel="noreferrer"
+                                sx={{ alignSelf: "flex-start", px: 0 }}
+                                target="_blank"
+                                variant="text"
+                            >
+                                Preview current video <OpenInNew />
+                            </Button>
+                            {/* eslint-disable-next-line react/jsx-closing-tag-location */}
+                        </Stack>
+                        : (
+                            <Typography color="secondary" sx={{ mt: 2 }}>
+                                No video has been uploaded yet.
+                            </Typography>
+                        )}
+                </Paper>
+                <Paper sx={{ p: { md: 3.5, xs: 2.5 } }} variant="outlined">
+                    <Typography color="primary" sx={{ fontWeight: 700 }} variant="overline">
+                        Replace video
+                    </Typography>
+                    <Typography sx={{ fontSize: "2rem", mb: 3, mt: 2 }} variant="h2">
+                        Prepare the next display
+                    </Typography>
+                    <Alert severity="warning" sx={{ mb: 3 }}>
+                        Uploading a new video will replace the current matchday video after validation.
+                        The existing video stays active if anything fails.
+                    </Alert>
+                    {/* eslint-disable-next-line react/jsx-no-bind */}
+                    <Stack component="form" onSubmit={upload} spacing={2}>
+                        <Button
+                            color="primary"
+                            component="label"
+                            sx={{ justifyContent: "flex-start", minHeight: 58, textAlign: "left" }}
+                            variant="outlined"
+                        >
+                            {file ? file.name : "Choose an MP4 file"}
+                            {/* eslint-disable-next-line react/jsx-no-bind */}
+                            <input accept="video/mp4,.mp4" hidden onChange={chooseFile} type="file" />
+                        </Button>
+                        <Button disabled={!file || state === "Uploading"} type="submit" variant="contained">
+                            {state === "Uploading" ? `Uploading ${progress}%` : "Upload and activate"}
+                        </Button>
+                        {state === "Uploading" && (
+                            <LinearProgress color="secondary" value={progress} variant="determinate" />
+                        )}
+                        <Typography color="secondary" variant="body2">
+                            {state}{state === "Uploading" && ` · ${progress}%`}
+                        </Typography>
+                        {error ? <Alert severity="error">{error}</Alert> : null}
+                    </Stack>
+                </Paper>
+            </Box>
+        </Container>
+    );
+}

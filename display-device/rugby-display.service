@@ -1,0 +1,17 @@
+[Unit]
+Description=Rugby Club local video cache and playback server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/rugby-display
+Environment=RUGBY_DISPLAY_DIR=/opt/rugby-display/data
+Environment=RUGBY_DISPLAY_URL=https://your-domain.example
+ExecStart=/usr/bin/node /opt/rugby-display/dist/display.js
+Restart=always
+RestartSec=10
+User=display
+
+[Install]
+WantedBy=multi-user.target
