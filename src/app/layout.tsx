@@ -5,20 +5,21 @@ import { Footer } from "components/footer";
 import { Header } from "components/header";
 import { Inter } from "next/font/google";
 import type { ReactNode } from "react";
+import logo from "../assets/images/logo.png";
 
 // eslint-disable-next-line new-cap
 const inter = Inter({ subsets: ["latin"] });
 
 // https://realfavicongenerator.net (remove the mask icon and msapplication stuff)
 export const metadata: Metadata = {
-    description: "My website description.",
+    description: "Manage the current matchday video for Bishop's Stortford Rugby Football Club.",
     icons: {
-        apple: "https://cdn.worldvectorlogo.com/logos/next-js.svg",
-        icon: [],
-        shortcut: "https://cdn.worldvectorlogo.com/logos/next-js.svg",
+        apple: logo.src,
+        icon: logo.src,
+        shortcut: logo.src,
     },
     keywords: [],
-    title: "My Website",
+    title: "Matchday Display | Bishop's Stortford Rugby Football Club",
 };
 
 export const viewport: Viewport = {
