@@ -19,13 +19,14 @@ export async function POST(request: Request): Promise<NextResponse> {
     response.headers.set("cache-control", "no-store");
     const forwardedProtocol = request.headers.get("x-forwarded-proto");
     const protocol = forwardedProtocol?.split(",")[0]?.trim() ?? new URL(request.url).protocol;
+    const secure = protocol === "https" || protocol === "https:";
 
     response.cookies.set("matchday_session", createSessionToken(), {
         httpOnly: true,
         maxAge: 60 * 60 * 24 * 30,
         path: "/",
         sameSite: "strict",
-        secure: protocol === "https:",
+        secure,
     });
 
     return response;
