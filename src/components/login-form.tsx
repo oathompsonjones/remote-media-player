@@ -37,6 +37,7 @@ export function LoginForm({ onAuthenticated }: Props): ReactNode {
         headers.set("content-type", "application/json");
         const response = await fetch("/api/matchday/login", {
             body: JSON.stringify({ password, username }),
+            credentials: "include",
             headers,
             method: "POST",
         });

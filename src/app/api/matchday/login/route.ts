@@ -15,6 +15,8 @@ export async function POST(request: Request): Promise<NextResponse> {
         return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
 
     const response = NextResponse.json({ ok: true });
+
+    response.headers.set("cache-control", "no-store");
     const forwardedProtocol = request.headers.get("x-forwarded-proto");
     const protocol = forwardedProtocol?.split(",")[0]?.trim() ?? new URL(request.url).protocol;
 
