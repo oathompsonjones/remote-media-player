@@ -9,7 +9,7 @@ import logo from "../assets/images/logo.png";
  */
 export function Header(): ReactNode {
     return (
-        <AppBar color="transparent" component="header" elevation={0} position="static">
+        <AppBar component="header" position="static">
             <Container maxWidth="lg">
                 <Toolbar disableGutters sx={{ gap: 3, justifyContent: "space-between", py: 1.5 }}>
                     <Box sx={{ alignItems: "center", display: "flex", gap: 2 }}>
@@ -20,7 +20,7 @@ export function Header(): ReactNode {
                             src={logo}
                             width={56}
                         />
-                        <Typography color="primary" sx={{ fontWeight: 700 }} variant="h6">
+                        <Typography sx={{ fontWeight: 700 }} variant="h6">
                             Bishop's Stortford Rugby Football Club
                         </Typography>
                     </Box>

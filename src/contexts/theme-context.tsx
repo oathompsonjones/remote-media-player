@@ -11,18 +11,23 @@ const colours = {
 };
 
 const theme = createTheme({
+    components: {
+        MuiCssBaseline: { styleOverrides: { body: { color: colours.white } } },
+        MuiPaper: { styleOverrides: { root: { color: colours.blue } } },
+    },
     palette: {
         background: {
-            default: colours.white,
+            default: colours.blue,
             paper: colours.white,
         },
         error: { main: colours.red },
         primary: { main: colours.blue },
-        secondary: { main: colours.pink },
+        secondary: { main: colours.white },
         text: {
             primary: colours.blue,
             secondary: colours.pink,
         },
+        warning: { main: colours.red },
     },
     shape: { borderRadius: 0 },
     typography: {

@@ -1,4 +1,5 @@
 import "styles/global.css";
+import "styles/background.css";
 import type { Metadata, Viewport } from "next";
 import { AppThemeProvider } from "contexts/theme-context";
 import { Footer } from "components/footer";
