@@ -23,7 +23,7 @@ Configure the existing VPS reverse proxy to pass `/matchday`, `/api`, and the Ne
 
 ## Display device setup
 
-On the display device's operating system, install Node.js 22+, Chromium, and systemd prerequisites. Copy `display-device/` to `/opt/rugby-display`, run `npm install` and `npm run build` there, then create a `display` user with access to that directory. Edit `display-device/rugby-display.service` and replace `RUGBY_DISPLAY_URL` with the HTTPS origin of this application. Install both units:
+On the display device's operating system, install Node.js 22+, Chromium, and systemd prerequisites. Clone this repository to `/opt/rugby-display` (`sudo git clone https://github.com/oathompsonjones/remote-media-player.git /opt/rugby-display`), then create a `display` user with access to that directory. Edit `display-device/rugby-display.service` and replace `RUGBY_DISPLAY_URL` with the HTTPS origin of this application. Install both units:
 
 ```sh
 sudo cp display-device/rugby-display.service display-device/chromium-kiosk.service /etc/systemd/system/
@@ -31,7 +31,7 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now rugby-display.service chromium-kiosk.service
 ```
 
-Configure the display device to log into its graphical session automatically as `display`, with HDMI connected to the distribution system. Chromium opens `http://127.0.0.1:8787/` in kiosk mode. `rugby-display.service` retries metadata and downloads every five minutes, verifies size and SHA-256, and restarts after crashes. A failed network request leaves the current local file untouched.
+Configure the display device to log into its graphical session automatically as `display`, with HDMI connected to the distribution system. Chromium opens `http://127.0.0.1:8787/` in kiosk mode. On every start (and restart) `rugby-display.service` runs `display-device/start.sh`, which pulls the latest commit from GitHub, reinstalls dependencies, rebuilds, and then launches the server. `rugby-display.service` itself retries metadata and downloads every five minutes, verifies size and SHA-256, and restarts after crashes. A failed network request leaves the current local file untouched.
 
 The first boot needs one successful sync before there is anything to play. The display device does not need an administrator login or upload credentials.
 

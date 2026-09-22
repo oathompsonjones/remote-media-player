@@ -5,10 +5,10 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-WorkingDirectory=/opt/rugby-display
-Environment=RUGBY_DISPLAY_DIR=/opt/rugby-display/data
+WorkingDirectory=/opt/rugby-display/display-device
+Environment=RUGBY_DISPLAY_DIR=/opt/rugby-display/display-device/data
 Environment=RUGBY_DISPLAY_URL=https://your-domain.example
-ExecStart=/usr/bin/node /opt/rugby-display/dist/display.js
+ExecStart=/opt/rugby-display/display-device/start.sh
 Restart=always
 RestartSec=10
 User=display
