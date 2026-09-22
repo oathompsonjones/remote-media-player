@@ -15,13 +15,15 @@ export async function POST(request: Request): Promise<NextResponse> {
         return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
 
     const response = NextResponse.json({ ok: true });
+    const forwardedProtocol = request.headers.get("x-forwarded-proto");
+    const protocol = forwardedProtocol?.split(",")[0]?.trim() ?? new URL(request.url).protocol;
 
     response.cookies.set("matchday_session", createSessionToken(), {
         httpOnly: true,
         maxAge: 60 * 60 * 24 * 30,
         path: "/",
         sameSite: "strict",
-        secure: process.env.NODE_ENV === "production",
+        secure: protocol === "https:",
     });
 
     return response;
