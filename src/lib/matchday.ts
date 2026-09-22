@@ -62,18 +62,26 @@ export function isValidSessionToken(token: string | undefined): boolean {
     if (token === undefined)
         return false;
 
-    const separator = token.lastIndexOf(".");
+    let decodedToken: string;
+
+    try {
+        decodedToken = decodeURIComponent(token);
+    } catch {
+        return false;
+    }
+
+    const separator = decodedToken.lastIndexOf(".");
 
     if (separator < 1)
         return false;
 
-    const payload = token.slice(0, separator);
+    const payload = decodedToken.slice(0, separator);
     const issuedAt = Number(payload.split(":")[1]);
 
     if (!Number.isFinite(issuedAt) || Date.now() - issuedAt > sessionLifetimeMilliseconds || issuedAt > Date.now())
         return false;
 
-    const supplied = Buffer.from(token.slice(separator + 1));
+    const supplied = Buffer.from(decodedToken.slice(separator + 1));
     const expected = createHmac("sha256", requiredSecret()).update(payload).digest("base64url");
 
     return supplied.length === expected.length && timingSafeEqual(supplied, Buffer.from(expected));
