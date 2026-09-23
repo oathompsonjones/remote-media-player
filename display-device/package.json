@@ -2,7 +2,7 @@
     "private": true,
     "type": "module",
     "scripts": {
-        "build": "tsc -p tsconfig.json",
+        "build": "tsc -p tsconfig.json && cp playback.html dist/playback.html",
         "lint": "pnpm --dir .. exec eslint --config display-device/eslint.config.mjs display-device",
         "start": "node dist/display.js"
     },
