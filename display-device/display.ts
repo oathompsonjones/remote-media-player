@@ -44,8 +44,23 @@ async function hashFile(filePath: string): Promise<string> {
 }
 
 /**
+ * Writes a message to standard output.
+ * @param message - The message to write.
+ */
+function logInfo(message: string): void {
+    process.stdout.write(`${message}\n`);
+}
+
+/**
+ * Writes a message to standard error.
+ * @param message - The message to write.
+ */
+function logError(message: string): void {
+    process.stderr.write(`${message}\n`);
+}
+
+/**
  * Synchronizes the cached video with the remote display service.
- * @returns A promise that resolves after synchronization.
  */
 async function sync(): Promise<void> {
     try {
@@ -90,10 +105,117 @@ async function sync(): Promise<void> {
 
         await rename(temporaryPath, videoPath);
         await writeFile(metadataPath, `${JSON.stringify(remote)}\n`, "utf8");
-        console.log(`Synced ${remote.filename} (${remote.size} bytes)`);
+        logInfo(`Synced ${remote.filename} (${remote.size} bytes)`);
     } catch (error) {
-        console.error("Sync failed; keeping the local video:", error instanceof Error ? error.message : error);
+        const message = error instanceof Error ? error.message : String(error);
+
+        logError(`Sync failed; keeping the local video: ${message}`);
     }
+}
+
+/**
+ * Serves the locally cached metadata for the display.
+ * @param response - The outgoing HTTP response.
+ */
+async function serveLocalMetadata(response: ServerResponse): Promise<void> {
+    response.setHeader("content-type", "application/json");
+    response.end(JSON.stringify(await localMetadata()));
+}
+
+/**
+ * Serves the playback page for the display.
+ * @param response - The outgoing HTTP response.
+ */
+async function servePlaybackPage(response: ServerResponse): Promise<void> {
+    response.setHeader("content-type", "text/html");
+    response.end(await readFile(path.join(import.meta.dirname, "playback.html")));
+}
+
+/**
+ * Parses a byte-range request for the current video.
+ * @param rangeHeader - The Range header value from the request.
+ * @param fileSize - The size of the video file in bytes.
+ * @returns The start and end positions for the requested range, or null if the range is invalid.
+ */
+function parseVideoRange(rangeHeader: string, fileSize: number): Readonly<{
+    contentLength: number;
+    end: number;
+    start: number;
+}> | null {
+    const match = (/^bytes=(\d*)-(\d*)$/u).exec(rangeHeader);
+
+    if (!match)
+        return null;
+
+    const start = match[1] ? Number(match[1]) : 0;
+    const end = match[2] ? Number(match[2]) : fileSize - 1;
+
+    if (
+        !Number.isInteger(start) ||
+        !Number.isInteger(end) ||
+        start < 0 ||
+        start >= fileSize ||
+        end < start
+    )
+        return null;
+
+    const actualEnd = Math.min(end, fileSize - 1);
+
+    return {
+        contentLength: actualEnd - start + 1,
+        end: actualEnd,
+        start,
+    };
+}
+
+/**
+ * Serves the current video file and handles range requests.
+ * @param request - The incoming HTTP request.
+ * @param response - The outgoing HTTP response.
+ */
+async function serveVideo(request: IncomingMessage, response: ServerResponse): Promise<void> {
+    const file = await stat(videoPath).catch(() => null);
+
+    if (!file) {
+        response.writeHead(404);
+        response.end();
+
+        return;
+    }
+
+    const fileSize = Number(file.size);
+    const rangeHeader = request.headers.range;
+
+    response.setHeader("cache-control", "no-cache");
+    response.setHeader("accept-ranges", "bytes");
+    response.setHeader("content-type", "video/mp4");
+
+    if (typeof rangeHeader !== "string" || rangeHeader.length === 0) {
+        response.setHeader("content-length", String(fileSize));
+        response.writeHead(200);
+        createReadStream(videoPath).pipe(response);
+
+        return;
+    }
+
+    const range = parseVideoRange(rangeHeader, fileSize);
+
+    if (!range) {
+        response.setHeader("content-range", `bytes */${fileSize}`);
+        response.writeHead(416);
+        response.end();
+
+        return;
+    }
+
+    response.setHeader("content-range", `bytes ${range.start}-${range.end}/${fileSize}`);
+    response.setHeader("content-length", String(range.contentLength));
+    response.writeHead(206);
+
+    createReadStream(videoPath, {
+        end: range.end,
+        start: range.start,
+    }).pipe(response);
 }
 
 /**
@@ -103,37 +225,22 @@ async function sync(): Promise<void> {
  * @returns A promise that resolves after the request is handled.
  */
 async function serve(request: IncomingMessage, response: ServerResponse): Promise<void> {
-    if (request.url === "/local-metadata") {
-        response.setHeader("content-type", "application/json");
-        response.end(JSON.stringify(await localMetadata()));
+    const requestPath = request.url ?? "";
+
+    if (requestPath === "/local-metadata") {
+        await serveLocalMetadata(response);
 
         return;
     }
 
-    if (request.url === "/" || request.url === "/index.html") {
-        response.setHeader("content-type", "text/html");
-        response.end(await readFile(path.join(import.meta.dirname, "playback.html")));
+    if (requestPath === "/" || requestPath === "/index.html") {
+        await servePlaybackPage(response);
 
         return;
     }
 
-    if (request.url === "/current.mp4") {
-        const file = await stat(videoPath).catch(() => null);
-
-        if (!file) {
-            response.writeHead(404);
-            response.end();
-
-            return;
-        }
-
-        const fileSize = Number(file.size);
-
-        response.setHeader("cache-control", "no-cache");
-        response.setHeader("content-length", fileSize);
-        response.setHeader("content-type", "video/mp4");
-        response.writeHead(200);
-        createReadStream(videoPath).pipe(response);
+    if (requestPath === "/current.mp4") {
+        await serveVideo(request, response);
 
         return;
     }
@@ -145,7 +252,7 @@ async function serve(request: IncomingMessage, response: ServerResponse): Promis
 await mkdir(root, { recursive: true });
 createServer((request, response) => {
     void serve(request, response);
-}).listen(port, "127.0.0.1", () => console.log(`Playback server listening on ${port}`));
+}).listen(port, "127.0.0.1", () => logInfo(`Playback server listening on ${port}`));
 await sync();
 setInterval(() => {
     sync().catch(() => undefined);
