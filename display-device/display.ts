@@ -225,7 +225,7 @@ async function serveVideo(request: IncomingMessage, response: ServerResponse): P
  * @returns A promise that resolves after the request is handled.
  */
 async function serve(request: IncomingMessage, response: ServerResponse): Promise<void> {
-    const requestPath = request.url ?? "";
+    const requestPath = new URL(request.url ?? "/", "http://127.0.0.1").pathname;
 
     if (requestPath === "/local-metadata") {
         await serveLocalMetadata(response);
