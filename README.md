@@ -37,7 +37,7 @@ The first boot needs one successful sync before there is anything to play. The d
 
 ## Operational notes
 
-Upload progress is reported in the management page. A new upload is streamed to `.uploading`, inspected by `ffprobe`, hashed, and only then moved to `current.mp4`; a failed upload is removed while the previous active video remains available. There is intentionally no archive, history, playlist, schedule, or database.
+Upload progress is reported in the management page. A new upload is streamed to `.uploading`, inspected by `ffprobe`, then re-encoded with `ffmpeg` (25fps, H.264 high profile, no audio, faststart) for smooth playback on the display, hashed, and only then moved to `current.mp4`; a failed upload or re-encode is removed while the previous active video remains available. There is intentionally no archive, history, playlist, schedule, or database.
 
 The current implementation logs upload failures and display-device sync failures to the process/systemd logs. View them with `journalctl -u rugby-display.service` on the display device and the process manager logs on the VPS.
 To set your project up with just one command, add the following script to your `.bashrc` file:

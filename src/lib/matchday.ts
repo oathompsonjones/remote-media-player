@@ -183,6 +183,67 @@ async function inspectVideo(
 }
 
 /**
+ * Re-encodes a video for smooth playback on the kiosk display.
+ * Matches the ffmpeg settings verified to fix stutter on the Raspberry Pi player.
+ * @param inputPath - The uploaded source file.
+ * @param outputPath - The destination for the re-encoded file.
+ */
+async function transcodeForDisplay(inputPath: string, outputPath: string): Promise<void> {
+    await execFileAsync("ffmpeg", [
+        "-y",
+        "-i",
+        inputPath,
+        "-vf",
+        "fps=25",
+        "-c:v",
+        "libx264",
+        "-preset",
+        "medium",
+        "-crf",
+        "23",
+        "-profile:v",
+        "high",
+        "-level",
+        "4.0",
+        "-pix_fmt",
+        "yuv420p",
+        "-an",
+        "-movflags",
+        "+faststart",
+        "-f",
+        "mp4",
+        outputPath,
+    ]);
+}
+
+/**
+ * Streams an upload body to disk, enforcing the maximum size.
+ * @param body - The incoming video stream.
+ * @param destinationPath - The file to write to.
+ */
+async function writeUploadToDisk(body: ReadableStream<Uint8Array>, destinationPath: string): Promise<void> {
+    const output = createWriteStream(destinationPath, { flags: "wx" });
+    let written = 0;
+
+    for await (const chunk of body as AsyncIterable<Uint8Array>) {
+        written += chunk.byteLength;
+
+        if (written > maximumVideoSize)
+            throw new Error("The video exceeds the 5 GB limit");
+
+        if (!output.write(chunk)) {
+            await new Promise<void>((resolve) => {
+                output.once("drain", () => resolve());
+            });
+        }
+    }
+    await new Promise<void>((resolve, reject) => {
+        output.once("error", reject);
+        output.end(() => resolve());
+    });
+}
+
+/**
  * Validates and atomically replaces the current video.
  * @param body - The incoming video stream.
  * @param filename - The original filename.
@@ -201,44 +262,39 @@ export async function replaceVideo(
         throw new Error("The video exceeds the 5 GB limit");
 
     await mkdir(temporaryDirectory, { recursive: true });
-    const temporaryPath = path.join(temporaryDirectory, `${crypto.randomUUID()}.tmp`);
-    let written = 0;
+    const uploadedPath = path.join(temporaryDirectory, `${crypto.randomUUID()}.upload.tmp`);
+    const transcodedPath = path.join(temporaryDirectory, `${crypto.randomUUID()}.mp4.tmp`);
 
     try {
-        const output = createWriteStream(temporaryPath, { flags: "wx" });
+        await writeUploadToDisk(body, uploadedPath);
+        await inspectVideo(uploadedPath);
 
-        for await (const chunk of body as AsyncIterable<Uint8Array>) {
-            written += chunk.byteLength;
+        try {
+            await transcodeForDisplay(uploadedPath, transcodedPath);
+        } catch (error) {
+            console.error("Matchday transcode failed", error);
 
-            if (written > maximumVideoSize)
-                throw new Error("The video exceeds the 5 GB limit");
-
-            if (!output.write(chunk)) {
-                await new Promise<void>((resolve) => {
-                    output.once("drain", () => resolve());
-                });
-            }
+            throw new Error("The video could not be optimised for the display");
         }
-        await new Promise<void>((resolve, reject) => {
-            output.once("error", reject);
-            output.end(() => resolve());
-        });
-        const details = await inspectVideo(temporaryPath);
+
+        const details = await inspectVideo(transcodedPath);
+        const { size } = await stat(transcodedPath);
         const metadata: VideoMetadata = {
             ...details,
             filename: path.basename(filename).replace(/[^a-zA-Z0-9._ -]/gu, "_") || "matchday.mp4",
             id: crypto.randomUUID(),
             mimeType: "video/mp4",
-            sha256: await sha256File(temporaryPath),
-            size: written,
+            sha256: await sha256File(transcodedPath),
+            size,
             uploadedAt: new Date().toISOString(),
         };
 
-        await rename(temporaryPath, videoPath);
+        await rename(transcodedPath, videoPath);
         await writeFile(metadataPath, `${JSON.stringify(metadata, null, 2)}\n`, "utf8");
 
         return metadata;
     } finally {
-        await rm(temporaryPath, { force: true });
+        await rm(uploadedPath, { force: true });
+        await rm(transcodedPath, { force: true });
     }
 }

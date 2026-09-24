@@ -25,6 +25,15 @@ type Props = { readonly authenticated: boolean; readonly initialMetadata: VideoM
 
 type UploadError = { readonly error?: string; };
 
+const enum States {
+    Ready = "Ready",
+    ReadyToUpload = "Ready to upload",
+    Uploading = "Uploading",
+    OptimisingForDisplay = "Optimising for display",
+    Active = "Active",
+    UploadFailed = "Upload failed",
+}
+
 /**
  * Formats a byte count for display.
  * @param bytes - The byte count.
@@ -98,7 +107,7 @@ export function MatchdayManager({ authenticated, initialMetadata }: Props): Reac
     const [metadata, setMetadata] = useState(initialMetadata);
     const [file, setFile] = useState<File | null>(null);
     const [progress, setProgress] = useState(0);
-    const [state, setState] = useState("Ready");
+    const [state, setState] = useState(States.Ready);
     const [error, setError] = useState("");
 
     /**
@@ -110,7 +119,7 @@ export function MatchdayManager({ authenticated, initialMetadata }: Props): Reac
 
         setFile(selected);
         setError("");
-        setState(selected ? "Ready to upload" : "Ready");
+        setState(selected ? States.ReadyToUpload : States.Ready);
         setProgress(0);
     }
 
@@ -128,7 +137,7 @@ export function MatchdayManager({ authenticated, initialMetadata }: Props): Reac
         }
 
         setError("");
-        setState("Uploading");
+        setState(States.Uploading);
         setProgress(0);
         const request = new XMLHttpRequest();
 
@@ -136,19 +145,22 @@ export function MatchdayManager({ authenticated, initialMetadata }: Props): Reac
             if (progressEvent.lengthComputable)
                 setProgress(Math.round(progressEvent.loaded / progressEvent.total * 100));
         };
+        request.upload.onload = (): void => {
+            setState(States.OptimisingForDisplay);
+        };
         request.onload = (): void => {
             if (request.status >= 200 && request.status < 300) {
                 setMetadata(JSON.parse(request.responseText) as VideoMetadata);
-                setState("Active");
+                setState(States.Active);
                 setFile(null);
                 setProgress(100);
             } else {
-                setState("Upload failed");
+                setState(States.UploadFailed);
                 setError(parseUploadError(request.responseText));
             }
         };
         request.onerror = (): void => {
-            setState("Upload failed");
+            setState(States.UploadFailed);
             setError("The connection failed; the existing video remains active.");
         };
         request.open("POST", "/api/matchday/upload");
@@ -271,10 +283,12 @@ export function MatchdayManager({ authenticated, initialMetadata }: Props): Reac
                     <Typography sx={{ fontSize: "2rem", mb: 3, mt: 2 }} variant="h2">
                         Prepare the next display
                     </Typography>
-                    <Alert severity="warning" sx={{ mb: 3 }}>
+                    <Typography color="textSecondary" sx={{ mb: 3 }}>
                         Uploading a new video will replace the current matchday video after validation.
-                        The existing video stays active if anything fails.
-                    </Alert>
+                        It will be re-encoded for smooth playback on the display before it goes live, so
+                        activation may take a few minutes after the upload finishes. The existing video
+                        stays active if anything fails.
+                    </Typography>
                     {/* eslint-disable react/jsx-no-bind */}
                     <Stack
                         component="form"
@@ -299,11 +313,15 @@ export function MatchdayManager({ authenticated, initialMetadata }: Props): Reac
                             {file ? file.name : "Choose an MP4 file"}
                             <input accept="video/mp4,.mp4" hidden onChange={chooseFile} type="file" />
                         </Button>
-                        {/* eslint-enable react/jsx-no-bind */}
-                        <Button disabled={!file || state === "Uploading"} type="submit" variant="contained">
-                            {state === "Uploading" ? `Uploading ${progress}%` : "Upload and activate"}
+                        <Button
+                            disabled={!file || state === States.Uploading || state === States.OptimisingForDisplay}
+                            loading={state === States.Uploading || state === States.OptimisingForDisplay}
+                            type="submit"
+                            variant="contained"
+                        >
+                            Upload and activate
                         </Button>
-                        {state === "Uploading" && (
+                        {state === States.Uploading && (
                             <LinearProgress
                                 sx={{ maxWidth: "100%", overflow: "hidden", width: "100%" }}
                                 value={progress}
@@ -311,7 +329,7 @@ export function MatchdayManager({ authenticated, initialMetadata }: Props): Reac
                             />
                         )}
                         <Typography variant="body2">
-                            {state}{state === "Uploading" && ` · ${progress}%`}
+                            {state}{state === States.Uploading && ` · ${progress}%`}
                         </Typography>
                         {error ? <Alert severity="error">{error}</Alert> : null}
                     </Stack>
