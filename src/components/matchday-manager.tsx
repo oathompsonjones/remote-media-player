@@ -16,9 +16,9 @@ import {
     Typography,
 } from "@mui/material";
 import type { ChangeEvent, FormEvent, ReactNode } from "react";
+import type { MatchdayProgress, VideoMetadata } from "lib/matchday";
 import { LoginForm } from "components/login-form";
 import { OpenInNew } from "@mui/icons-material";
-import type { VideoMetadata } from "lib/matchday";
 import { useState } from "react";
 
 type Props = { readonly authenticated: boolean; readonly initialMetadata: VideoMetadata | null; };
@@ -139,30 +139,73 @@ export function MatchdayManager({ authenticated, initialMetadata }: Props): Reac
         setError("");
         setState(States.Uploading);
         setProgress(0);
+
+        const progressSource = new EventSource("/api/matchday/progress");
         const request = new XMLHttpRequest();
+        let activated = false;
+
+        progressSource.onmessage = (message: { data: string; }): void => {
+            try {
+                const update = JSON.parse(message.data) as MatchdayProgress;
+
+                if (update.state === "optimising") {
+                    setState(States.OptimisingForDisplay);
+                    setProgress(update.progress);
+                } else if (update.state === "active") {
+                    activated = true;
+
+                    if (update.metadata)
+                        setMetadata(update.metadata);
+
+                    setState(States.Active);
+                    setFile(null);
+                    setProgress(100);
+                    progressSource.close();
+                } else if (update.state === "error") {
+                    setState(States.UploadFailed);
+                    setError(update.error ?? "Upload failed; the existing video remains active.");
+                    progressSource.close();
+                }
+            } catch {
+            // Ignore malformed progress events.
+            }
+        };
 
         request.upload.onprogress = (progressEvent): void => {
             if (progressEvent.lengthComputable)
                 setProgress(Math.round(progressEvent.loaded / progressEvent.total * 100));
         };
+
         request.upload.onload = (): void => {
             setState(States.OptimisingForDisplay);
+            setProgress(0);
         };
+
         request.onload = (): void => {
+            progressSource.close();
+
             if (request.status >= 200 && request.status < 300) {
-                setMetadata(JSON.parse(request.responseText) as VideoMetadata);
-                setState(States.Active);
-                setFile(null);
-                setProgress(100);
-            } else {
+                if (!activated) {
+                    setMetadata(JSON.parse(request.responseText) as VideoMetadata);
+                    setState(States.Active);
+                    setFile(null);
+                    setProgress(100);
+                }
+            } else if (!activated) {
                 setState(States.UploadFailed);
                 setError(parseUploadError(request.responseText));
             }
         };
+
         request.onerror = (): void => {
+            if (activated)
+                return;
+
+            progressSource.close();
             setState(States.UploadFailed);
             setError("The connection failed; the existing video remains active.");
         };
+
         request.open("POST", "/api/matchday/upload");
         request.setRequestHeader("content-type", "video/mp4");
         request.setRequestHeader("x-matchday-filename", file.name);
@@ -321,7 +364,7 @@ export function MatchdayManager({ authenticated, initialMetadata }: Props): Reac
                         >
                             Upload and activate
                         </Button>
-                        {state === States.Uploading && (
+                        {(state === States.Uploading || state === States.OptimisingForDisplay) && (
                             <LinearProgress
                                 sx={{ maxWidth: "100%", overflow: "hidden", width: "100%" }}
                                 value={progress}
@@ -329,7 +372,9 @@ export function MatchdayManager({ authenticated, initialMetadata }: Props): Reac
                             />
                         )}
                         <Typography variant="body2">
-                            {state}{state === States.Uploading && ` · ${progress}%`}
+                            {state === States.Uploading || state === States.OptimisingForDisplay
+                                ? `${state} · ${progress}%`
+                                : state}
                         </Typography>
                         {error ? <Alert severity="error">{error}</Alert> : null}
                     </Stack>

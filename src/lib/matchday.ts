@@ -1,7 +1,8 @@
 import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { createReadStream, createWriteStream } from "node:fs";
+import { execFile, spawn } from "node:child_process";
 import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
-import { execFile } from "node:child_process";
+import { createInterface } from "node:readline";
 import path from "node:path";
 import { promisify } from "node:util";
 
@@ -27,6 +28,54 @@ export type VideoMetadata = {
     audioCodec?: string;
     sha256: string;
 };
+
+export type MatchdayProgress = {
+    readonly state: "active" | "error" | "idle" | "optimising";
+    readonly progress: number;
+    readonly error?: string;
+    readonly metadata?: VideoMetadata;
+};
+
+type ProgressListener = (progress: MatchdayProgress) => void;
+
+let currentProgress: MatchdayProgress = {
+    progress: 0,
+    state: "idle",
+};
+
+const progressListeners = new Set<ProgressListener>();
+
+/**
+ * Gets the current matchday processing progress.
+ * @returns The current progress.
+ */
+export function getMatchdayProgress(): MatchdayProgress {
+    return currentProgress;
+}
+
+/**
+ * Subscribes to matchday processing progress.
+ * @param listener - The progress listener to subscribe to.
+ * @returns A function that removes the listener.
+ */
+export function subscribeMatchdayProgress(listener: ProgressListener): () => void {
+    progressListeners.add(listener);
+
+    return (): void => {
+        progressListeners.delete(listener);
+    };
+}
+
+/**
+ * Publishes matchday processing progress.
+ * @param progress - The new progress.
+ */
+function publishMatchdayProgress(progress: MatchdayProgress): void {
+    currentProgress = progress;
+
+    for (const listener of progressListeners)
+        listener(progress);
+}
 
 /**
  * Reads the configured session secret.
@@ -142,7 +191,12 @@ async function sha256File(filePath: string): Promise<string> {
 
 type ProbeStream = Readonly<Record<string, number | string | undefined>>;
 
-type Probe = { readonly format?: { readonly duration?: string; }; readonly streams?: ProbeStream[]; };
+type Probe = {
+    readonly format?: {
+        readonly duration?: string;
+    };
+    readonly streams?: ProbeStream[];
+};
 
 /**
  * Extracts video details with ffprobe.
@@ -187,33 +241,97 @@ async function inspectVideo(
  * Matches the ffmpeg settings verified to fix stutter on the Raspberry Pi player.
  * @param inputPath - The uploaded source file.
  * @param outputPath - The destination for the re-encoded file.
+ * @param duration - The input video duration in seconds.
  */
-async function transcodeForDisplay(inputPath: string, outputPath: string): Promise<void> {
-    await execFileAsync("ffmpeg", [
-        "-y",
-        "-i",
-        inputPath,
-        "-vf",
-        "fps=25",
-        "-c:v",
-        "libx264",
-        "-preset",
-        "medium",
-        "-crf",
-        "23",
-        "-profile:v",
-        "high",
-        "-level",
-        "4.0",
-        "-pix_fmt",
-        "yuv420p",
-        "-an",
-        "-movflags",
-        "+faststart",
-        "-f",
-        "mp4",
-        outputPath,
-    ]);
+async function transcodeForDisplay(inputPath: string, outputPath: string, duration?: number): Promise<void> {
+    await new Promise<void>((resolve, reject) => {
+        const process = spawn("ffmpeg", [
+            "-y",
+            "-i",
+            inputPath,
+            "-vf",
+            "fps=25",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "medium",
+            "-crf",
+            "23",
+            "-profile:v",
+            "high",
+            "-level",
+            "4.0",
+            "-pix_fmt",
+            "yuv420p",
+            "-an",
+            "-movflags",
+            "+faststart",
+            "-f",
+            "mp4",
+            "-progress",
+            "pipe:1",
+            "-nostats",
+            outputPath,
+        ], { stdio: ["ignore", "pipe", "pipe"] });
+
+        const progressReader = createInterface({ input: process.stdout });
+
+        let stderr = "";
+        let settled = false;
+
+        process.stderr.on("data", (chunk: Buffer) => {
+            stderr += chunk.toString();
+
+            if (stderr.length > 16_384)
+                stderr = stderr.slice(-16_384);
+        });
+
+        progressReader.on("line", (line: string): void => {
+            const separator = line.indexOf("=");
+
+            if (separator === -1)
+                return;
+
+            const key = line.slice(0, separator);
+            const value = line.slice(separator + 1);
+
+            if (key !== "out_time_us" || duration === undefined || duration <= 0)
+                return;
+
+            const outputTime = Number(value) / 1_000_000;
+
+            if (!Number.isFinite(outputTime))
+                return;
+
+            const progress = Math.min(95, Math.max(0, Math.round(outputTime / duration * 95)));
+
+            publishMatchdayProgress({ progress, state: "optimising" });
+        });
+
+        process.once("error", (error: Error): void => {
+            if (settled)
+                return;
+
+            settled = true;
+            progressReader.close();
+            reject(error);
+        });
+
+        process.once("close", (code: number | null): void => {
+            if (settled)
+                return;
+
+            settled = true;
+            progressReader.close();
+
+            if (code === 0) {
+                publishMatchdayProgress({ progress: 95, state: "optimising" });
+                resolve();
+            } else {
+                reject(new Error(stderr.trim() || `ffmpeg exited with code ${code ?? "unknown"}`));
+            }
+        });
+    });
 }
 
 /**
@@ -225,7 +343,7 @@ async function writeUploadToDisk(body: ReadableStream<Uint8Array>, destinationPa
     const output = createWriteStream(destinationPath, { flags: "wx" });
     let written = 0;
 
-    for await (const chunk of body as AsyncIterable<Uint8Array>) {
+    for await (const chunk of body as AsyncIterable<Uint8Array> & ReadableStream<Uint8Array>) {
         written += chunk.byteLength;
 
         if (written > maximumVideoSize)
@@ -250,6 +368,7 @@ async function writeUploadToDisk(body: ReadableStream<Uint8Array>, destinationPa
  * @param contentLength - The optional request content length.
  * @returns The metadata for the replaced video.
  */
+// eslint-disable-next-line max-statements
 export async function replaceVideo(
     body: ReadableStream<Uint8Array>,
     filename: string,
@@ -267,18 +386,28 @@ export async function replaceVideo(
 
     try {
         await writeUploadToDisk(body, uploadedPath);
-        await inspectVideo(uploadedPath);
+
+        publishMatchdayProgress({ progress: 0, state: "optimising" });
+
+        const inputDetails = await inspectVideo(uploadedPath);
 
         try {
-            await transcodeForDisplay(uploadedPath, transcodedPath);
+            await transcodeForDisplay(uploadedPath, transcodedPath, inputDetails.duration);
         } catch (error) {
             console.error("Matchday transcode failed", error);
-
             throw new Error("The video could not be optimised for the display");
         }
 
+        publishMatchdayProgress({ progress: 96, state: "optimising" });
+
         const details = await inspectVideo(transcodedPath);
+
+        publishMatchdayProgress({ progress: 97, state: "optimising" });
+
         const { size } = await stat(transcodedPath);
+
+        publishMatchdayProgress({ progress: 98, state: "optimising" });
+
         const metadata: VideoMetadata = {
             ...details,
             filename: path.basename(filename).replace(/[^a-zA-Z0-9._ -]/gu, "_") || "matchday.mp4",
@@ -289,10 +418,24 @@ export async function replaceVideo(
             uploadedAt: new Date().toISOString(),
         };
 
+        publishMatchdayProgress({ progress: 99, state: "optimising" });
+
         await rename(transcodedPath, videoPath);
         await writeFile(metadataPath, `${JSON.stringify(metadata, null, 2)}\n`, "utf8");
 
+        publishMatchdayProgress({ metadata, progress: 100, state: "active" });
+
         return metadata;
+    } catch (error) {
+        publishMatchdayProgress({
+            error: error instanceof Error
+                ? error.message
+                : "Upload failed; the existing video remains active",
+            progress: 0,
+            state: "error",
+        });
+
+        throw error;
     } finally {
         await rm(uploadedPath, { force: true });
         await rm(transcodedPath, { force: true });
