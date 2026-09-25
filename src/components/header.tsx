@@ -21,7 +21,7 @@ export function Header(): ReactNode {
                             width={56}
                         />
                         <Typography sx={{ fontWeight: 700 }} variant="h6">
-                            Bishop's Stortford Rugby Football Club
+                            Bishop's&nbsp;Stortford Rugby&nbsp;Football&nbsp;Club
                         </Typography>
                     </Box>
                 </Toolbar>
