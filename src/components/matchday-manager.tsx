@@ -17,9 +17,9 @@ import {
 } from "@mui/material";
 import type { ChangeEvent, FormEvent, ReactNode } from "react";
 import type { MatchdayProgress, VideoMetadata } from "lib/matchday";
+import { useEffect, useRef, useState } from "react";
 import { LoginForm } from "components/login-form";
 import { OpenInNew } from "@mui/icons-material";
-import { useState } from "react";
 
 type Props = { readonly authenticated: boolean; readonly initialMetadata: VideoMetadata | null; };
 
@@ -67,20 +67,20 @@ function formatDuration(duration?: number): string {
 }
 
 /**
- * Formats an upload timestamp in UTC.
+ * Formats an upload timestamp in the user's local timezone.
  * @param uploadedAt - The ISO timestamp.
  * @returns The formatted timestamp.
  */
 function formatUploadedAt(uploadedAt: string): string {
-    const date = new Date(uploadedAt);
-    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-    const day = date.getUTCDate();
-    const month = months[date.getUTCMonth()];
-    const year = date.getUTCFullYear();
-    const hours = String(date.getUTCHours()).padStart(2, "0");
-    const minutes = String(date.getUTCMinutes()).padStart(2, "0");
-
-    return `${day} ${month} ${year} at ${hours}:${minutes}`;
+    return new Intl.DateTimeFormat(undefined, {
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        month: "short",
+        timeZoneName: "short",
+        weekday: "long",
+        year: "numeric",
+    }).format(new Date(uploadedAt));
 }
 
 /**
@@ -109,6 +109,8 @@ export function MatchdayManager({ authenticated, initialMetadata }: Props): Reac
     const [progress, setProgress] = useState(0);
     const [state, setState] = useState(States.Ready);
     const [error, setError] = useState("");
+    const [mounted, setMounted] = useState(false);
+    const uploadButtonRef = useRef<HTMLButtonElement>(null);
 
     /**
      * Handles a selected video file.
@@ -121,7 +123,53 @@ export function MatchdayManager({ authenticated, initialMetadata }: Props): Reac
         setError("");
         setState(selected ? States.ReadyToUpload : States.Ready);
         setProgress(0);
+
+        if (selected)
+            requestAnimationFrame(() => uploadButtonRef.current?.focus());
     }
+
+    useEffect(() => {
+        setMounted(true);
+    }, []);
+
+    useEffect(() => {
+        if (!loggedIn)
+            return (): void => undefined;
+
+        const progressSource = new EventSource("/api/matchday/progress");
+
+        progressSource.onmessage = (message: MessageEvent<string>): void => {
+            try {
+                const update = JSON.parse(message.data) as MatchdayProgress;
+
+                if (update.state === "uploading") {
+                    setState(States.Uploading);
+                    setProgress(update.progress);
+                } else if (update.state === "optimising") {
+                    setState(States.OptimisingForDisplay);
+                    setProgress(update.progress);
+                } else if (update.state === "active") {
+                    if (update.metadata)
+                        setMetadata(update.metadata);
+
+                    setState(States.Active);
+                    setFile(null);
+                    setProgress(100);
+                } else if (update.state === "error") {
+                    setState(States.UploadFailed);
+                    setError(update.error ?? "Upload failed; the existing video remains active.");
+                }
+            } catch {
+                // Ignore malformed progress events.
+            }
+        };
+
+        progressSource.onerror = (): void => {
+            // EventSource automatically reconnects.
+        };
+
+        return (): void => progressSource.close();
+    }, [loggedIn]);
 
     /**
      * Uploads and activates the selected video.
@@ -140,68 +188,26 @@ export function MatchdayManager({ authenticated, initialMetadata }: Props): Reac
         setState(States.Uploading);
         setProgress(0);
 
-        const progressSource = new EventSource("/api/matchday/progress");
         const request = new XMLHttpRequest();
-        let activated = false;
-
-        progressSource.onmessage = (message: { data: string; }): void => {
-            try {
-                const update = JSON.parse(message.data) as MatchdayProgress;
-
-                if (update.state === "optimising") {
-                    setState(States.OptimisingForDisplay);
-                    setProgress(update.progress);
-                } else if (update.state === "active") {
-                    activated = true;
-
-                    if (update.metadata)
-                        setMetadata(update.metadata);
-
-                    setState(States.Active);
-                    setFile(null);
-                    setProgress(100);
-                    progressSource.close();
-                } else if (update.state === "error") {
-                    setState(States.UploadFailed);
-                    setError(update.error ?? "Upload failed; the existing video remains active.");
-                    progressSource.close();
-                }
-            } catch {
-            // Ignore malformed progress events.
-            }
-        };
 
         request.upload.onprogress = (progressEvent): void => {
             if (progressEvent.lengthComputable)
                 setProgress(Math.round(progressEvent.loaded / progressEvent.total * 100));
         };
 
-        request.upload.onload = (): void => {
-            setState(States.OptimisingForDisplay);
-            setProgress(0);
-        };
-
         request.onload = (): void => {
-            progressSource.close();
-
             if (request.status >= 200 && request.status < 300) {
-                if (!activated) {
-                    setMetadata(JSON.parse(request.responseText) as VideoMetadata);
-                    setState(States.Active);
-                    setFile(null);
-                    setProgress(100);
-                }
-            } else if (!activated) {
+                setMetadata(JSON.parse(request.responseText) as VideoMetadata);
+                setState(States.Active);
+                setFile(null);
+                setProgress(100);
+            } else {
                 setState(States.UploadFailed);
                 setError(parseUploadError(request.responseText));
             }
         };
 
         request.onerror = (): void => {
-            if (activated)
-                return;
-
-            progressSource.close();
             setState(States.UploadFailed);
             setError("The connection failed; the existing video remains active.");
         };
@@ -258,61 +264,64 @@ export function MatchdayManager({ authenticated, initialMetadata }: Props): Reac
                         Current video
                     </Typography>
                     {metadata
-                        ? <Stack spacing={3} sx={{ mt: 2 }}>
-                            <Typography
-                                sx={{ fontSize: "2rem", overflowWrap: "anywhere" }}
-                                variant="h2"
-                            >
-                                {metadata.filename}
-                            </Typography>
-                            <TableContainer>
-                                <Table size="small" sx={{ borderTop: 1 }}>
-                                    <TableBody>
-                                        {Object.entries({
-                                            Codec: metadata.videoCodec ?? "Unknown",
-                                            Duration: formatDuration(metadata.duration),
-                                            Resolution: `${metadata.width} × ${metadata.height}`,
-                                            Size: formatBytes(metadata.size),
-                                            Uploaded: formatUploadedAt(metadata.uploadedAt),
-                                        }).map(([label, value]): ReactNode => (
-                                            <TableRow key={label}>
-                                                <TableCell
-                                                    sx={{
-                                                        borderColor: "primary.main",
-                                                        fontWeight: 700,
-                                                        letterSpacing: ".08em",
-                                                        textTransform: "uppercase",
-                                                    }}
-                                                    variant="head"
-                                                >
-                                                    {label}
-                                                </TableCell>
-                                                <TableCell
-                                                    align="right"
-                                                    sx={{
-                                                        borderColor: "primary.main",
-                                                        color: "text.secondary",
-                                                        fontWeight: 500,
-                                                    }}
-                                                >
-                                                    {value}
-                                                </TableCell>
-                                            </TableRow>
-                                        ))}
-                                    </TableBody>
-                                </Table>
-                            </TableContainer>
-                            <Button
-                                href="/current.mp4"
-                                rel="noreferrer"
-                                sx={{ alignSelf: "flex-start", px: 0 }}
-                                target="_blank"
-                                variant="text"
-                            >
-                                Preview current video <OpenInNew />
-                            </Button>
-                            {/* eslint-disable-next-line react/jsx-closing-tag-location */}
-                        </Stack>
+                        ? (
+                            <Stack spacing={3} sx={{ mt: 2 }}>
+                                <Typography
+                                    sx={{ fontSize: "2rem", overflowWrap: "anywhere" }}
+                                    variant="h2"
+                                >
+                                    {metadata.filename}
+                                </Typography>
+                                <TableContainer>
+                                    <Table size="small" sx={{ borderTop: 1 }}>
+                                        <TableBody>
+                                            {Object.entries({
+                                                Codec: metadata.videoCodec ?? "Unknown",
+                                                Duration: formatDuration(metadata.duration),
+                                                Resolution: `${metadata.width} × ${metadata.height}`,
+                                                Size: formatBytes(metadata.size),
+                                                Uploaded: mounted
+                                                    ? formatUploadedAt(metadata.uploadedAt)
+                                                    : "Loading...",
+                                            }).map(([label, value]): ReactNode => (
+                                                <TableRow key={label}>
+                                                    <TableCell
+                                                        sx={{
+                                                            borderColor: "primary.main",
+                                                            fontWeight: 700,
+                                                            letterSpacing: ".08em",
+                                                            textTransform: "uppercase",
+                                                        }}
+                                                        variant="head"
+                                                    >
+                                                        {label}
+                                                    </TableCell>
+                                                    <TableCell
+                                                        align="right"
+                                                        sx={{
+                                                            borderColor: "primary.main",
+                                                            color: "text.secondary",
+                                                            fontWeight: 500,
+                                                        }}
+                                                    >
+                                                        {value}
+                                                    </TableCell>
+                                                </TableRow>
+                                            ))}
+                                        </TableBody>
+                                    </Table>
+                                </TableContainer>
+                                <Button
+                                    href="/current.mp4"
+                                    rel="noreferrer"
+                                    sx={{ alignSelf: "flex-start", px: 0 }}
+                                    target="_blank"
+                                    variant="text"
+                                >
+                                    Preview current video <OpenInNew />
+                                </Button>
+                            </Stack>
+                        )
                         : (
                             <Typography sx={{ mt: 2 }}>
                                 No video has been uploaded yet.
@@ -341,6 +350,13 @@ export function MatchdayManager({ authenticated, initialMetadata }: Props): Reac
                     >
                         <Button
                             component="label"
+                            disabled={state === States.Uploading || state === States.OptimisingForDisplay}
+                            onClick={(event): void => {
+                                if (event.detail === 0 && file) {
+                                    event.preventDefault();
+                                    event.currentTarget.form?.requestSubmit(uploadButtonRef.current ?? undefined);
+                                }
+                            }}
                             sx={{
                                 justifyContent: "flex-start",
                                 maxWidth: "100%",
@@ -351,6 +367,7 @@ export function MatchdayManager({ authenticated, initialMetadata }: Props): Reac
                                 textOverflow: "ellipsis",
                                 whiteSpace: "nowrap",
                             }}
+                            tabIndex={-1}
                             variant="outlined"
                         >
                             {file ? file.name : "Choose an MP4 file"}
