@@ -35,6 +35,31 @@ const enum States {
 }
 
 /**
+ * Checks if the given state represents an in-progress upload.
+ * @param state - The current state.
+ * @returns True if the state is uploading or optimising for display, false otherwise.
+ */
+function isInProgress(state: States): boolean {
+    return state === States.Uploading || state === States.OptimisingForDisplay;
+}
+
+/**
+ * Returns a user-friendly message indicating whether it is safe to leave or refresh the page based
+ * on the current state.
+ * @param state - The current state.
+ * @returns The appropriate refresh warning message.
+ */
+function refreshWarning(state: States): ReactNode {
+    if (state === States.Uploading)
+        return <Typography color="textSecondary">DO NOT LEAVE OR REFRESH THE PAGE</Typography>;
+
+    if (state === States.OptimisingForDisplay)
+        return <Typography color="textSecondary">It is safe to leave or refresh the page</Typography>;
+
+    return null;
+}
+
+/**
  * Formats a byte count for display.
  * @param bytes - The byte count.
  * @returns The formatted byte count.
@@ -350,7 +375,7 @@ export function MatchdayManager({ authenticated, initialMetadata }: Props): Reac
                     >
                         <Button
                             component="label"
-                            disabled={state === States.Uploading || state === States.OptimisingForDisplay}
+                            disabled={isInProgress(state)}
                             onClick={(event): void => {
                                 if (event.detail === 0 && file) {
                                     event.preventDefault();
@@ -374,14 +399,14 @@ export function MatchdayManager({ authenticated, initialMetadata }: Props): Reac
                             <input accept="video/mp4,.mp4" hidden onChange={chooseFile} type="file" />
                         </Button>
                         <Button
-                            disabled={!file || state === States.Uploading || state === States.OptimisingForDisplay}
-                            loading={state === States.Uploading || state === States.OptimisingForDisplay}
+                            disabled={!file || isInProgress(state)}
+                            loading={isInProgress(state)}
                             type="submit"
                             variant="contained"
                         >
                             Upload and activate
                         </Button>
-                        {(state === States.Uploading || state === States.OptimisingForDisplay) && (
+                        {isInProgress(state) && (
                             <LinearProgress
                                 sx={{ maxWidth: "100%", overflow: "hidden", width: "100%" }}
                                 value={progress}
@@ -389,9 +414,9 @@ export function MatchdayManager({ authenticated, initialMetadata }: Props): Reac
                             />
                         )}
                         <Typography variant="body2">
-                            {state === States.Uploading || state === States.OptimisingForDisplay
-                                ? `${state} · ${progress}%`
-                                : state}
+                            {state}
+                            {isInProgress(state) && ` · ${progress}%`}
+                            {refreshWarning(state)}
                         </Typography>
                         {error ? <Alert severity="error">{error}</Alert> : null}
                     </Stack>
