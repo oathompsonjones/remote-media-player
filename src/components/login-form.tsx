@@ -88,10 +88,10 @@ export function LoginForm({ onAuthenticated }: Props): ReactNode {
                         }}
                         variant="h1"
                     >
-                        Matchday control
+                        Display Manager
                     </Typography>
                     <Typography>
-                        Sign in to manage the single video shown across the clubhouse TVs.
+                        Sign in to manage the display settings for the clubhouse TVs.
                     </Typography>
                     {/* eslint-disable react/jsx-no-bind */}
                     <TextField
