@@ -19,7 +19,7 @@ import type { ChangeEvent, FormEvent, ReactNode } from "react";
 import type { MatchdayProgress, VideoMetadata } from "lib/matchday";
 import { LoginForm } from "components/login-form";
 import { OpenInNew } from "@mui/icons-material";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 type Props = { readonly authenticated: boolean; readonly initialMetadata: VideoMetadata | null; };
 
@@ -110,6 +110,7 @@ export function MatchdayManager({ authenticated, initialMetadata }: Props): Reac
     const [state, setState] = useState(States.Ready);
     const [error, setError] = useState("");
     const [mounted, setMounted] = useState(false);
+    const uploadButtonRef = useRef<HTMLButtonElement>(null);
 
     /**
      * Handles a selected video file.
@@ -122,6 +123,9 @@ export function MatchdayManager({ authenticated, initialMetadata }: Props): Reac
         setError("");
         setState(selected ? States.ReadyToUpload : States.Ready);
         setProgress(0);
+
+        if (selected)
+            requestAnimationFrame(() => uploadButtonRef.current?.focus());
     }
 
     useEffect(() => {
