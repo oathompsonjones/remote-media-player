@@ -32,7 +32,7 @@ cd /opt/rugby-display/display-device
 npm install
 ```
 
-The initial `npm install` requires network access, but it is not part of the boot process.
+The initial `npm install` requires network access, but it is not required for subsequent offline boots.
 
 Install the display service and labwc autostart configuration:
 
@@ -49,13 +49,15 @@ sudo systemctl enable --now rugby-display.service
 
 Configure the display device to log into its graphical session automatically as `display`, with HDMI connected to the distribution system. The labwc autostart waits for the local playback server at `http://127.0.0.1:8787/`, then opens it in Chromium kiosk mode.
 
-The display server starts independently of the network. It serves the cached video locally, then attempts to synchronise with the VPS. If the VPS or network is unavailable, synchronisation fails harmlessly and the existing local video remains available. This means the display can boot, start Chromium, and play its cached video with no network connection at all.
+The display server starts independently of the network. On startup, `start.sh` checks whether the GitHub remote is reachable. If it is, it attempts a fast-forward-only `git pull` and `npm install`; if the network is unavailable, the update is skipped. If an update fails, the existing checkout is used and startup continues. The display then builds and starts the local server regardless.
+
+The local server serves the cached video locally, then attempts to synchronise with the VPS. If the VPS or network is unavailable, synchronisation fails harmlessly and the existing local video remains available. This means the display can boot, start Chromium, and play its cached video with no network connection at all.
 
 The first boot needs one successful sync before there is anything to play. The display device does not need an administrator login or upload credentials.
 
 ### Updating the display device
 
-Updates to the display software are deliberately separate from boot. When the Pi has network access:
+The display automatically checks for software updates whenever its service starts and the GitHub remote is reachable. To apply an update manually, or immediately after changing the configuration:
 
 ```sh
 cd /opt/rugby-display
@@ -64,8 +66,6 @@ cd display-device
 npm install
 sudo systemctl restart rugby-display.service
 ```
-
-Do not put `git pull` or `npm install` back into the service startup path: both can require network access and would prevent offline playback from starting.
 
 ## Operational notes
 
