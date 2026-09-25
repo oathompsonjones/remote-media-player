@@ -30,7 +30,7 @@ export type VideoMetadata = {
 };
 
 export type MatchdayProgress = {
-    readonly state: "active" | "error" | "idle" | "optimising";
+    readonly state: "active" | "error" | "idle" | "optimising" | "uploading";
     readonly progress: number;
     readonly error?: string;
     readonly metadata?: VideoMetadata;
@@ -339,9 +339,16 @@ async function transcodeForDisplay(inputPath: string, outputPath: string, durati
  * @param body - The incoming video stream.
  * @param destinationPath - The file to write to.
  */
-async function writeUploadToDisk(body: ReadableStream<Uint8Array>, destinationPath: string): Promise<void> {
+async function writeUploadToDisk(
+    body: ReadableStream<Uint8Array>,
+    destinationPath: string,
+    contentLength?: number,
+): Promise<void> {
     const output = createWriteStream(destinationPath, { flags: "wx" });
     let written = 0;
+    let lastProgress = -1;
+
+    publishMatchdayProgress({ progress: 0, state: "uploading" });
 
     for await (const chunk of body as AsyncIterable<Uint8Array> & ReadableStream<Uint8Array>) {
         written += chunk.byteLength;
@@ -349,16 +356,29 @@ async function writeUploadToDisk(body: ReadableStream<Uint8Array>, destinationPa
         if (written > maximumVideoSize)
             throw new Error("The video exceeds the 5 GB limit");
 
+        if (contentLength !== undefined && contentLength > 0) {
+            const progress = Math.min(100, Math.round(written / contentLength * 100));
+
+            if (progress !== lastProgress) {
+                lastProgress = progress;
+                publishMatchdayProgress({ progress, state: "uploading" });
+            }
+        }
+
         if (!output.write(chunk)) {
             await new Promise<void>((resolve) => {
                 output.once("drain", () => resolve());
             });
         }
     }
+
     await new Promise<void>((resolve, reject) => {
         output.once("error", reject);
         output.end(() => resolve());
     });
+
+    if (lastProgress < 100)
+        publishMatchdayProgress({ progress: 100, state: "uploading" });
 }
 
 /**
@@ -385,7 +405,7 @@ export async function replaceVideo(
     const transcodedPath = path.join(temporaryDirectory, `${crypto.randomUUID()}.mp4.tmp`);
 
     try {
-        await writeUploadToDisk(body, uploadedPath);
+        await writeUploadToDisk(body, uploadedPath, contentLength);
 
         publishMatchdayProgress({ progress: 0, state: "optimising" });
 
