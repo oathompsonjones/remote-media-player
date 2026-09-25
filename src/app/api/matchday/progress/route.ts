@@ -31,9 +31,8 @@ export async function GET(): Promise<Response> {
                 }
             };
 
-            send(getMatchdayProgress());
-
             unsubscribe = subscribeMatchdayProgress(send);
+            send(getMatchdayProgress());
         },
         cancel() {
             cancelled = true;
