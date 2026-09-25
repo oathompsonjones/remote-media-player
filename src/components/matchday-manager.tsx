@@ -350,8 +350,8 @@ export function MatchdayManager({ authenticated, initialMetadata }: Props): Reac
                         <Button
                             component="label"
                             disabled={state === States.Uploading || state === States.OptimisingForDisplay}
-                            onKeyDown={(event): void => {
-                                if (event.key === "Enter" && file) {
+                            onClick={(event): void => {
+                                if (event.detail === 0 && file) {
                                     event.preventDefault();
                                     event.currentTarget.form?.requestSubmit(uploadButtonRef.current ?? undefined);
                                 }
