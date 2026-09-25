@@ -19,7 +19,7 @@ import type { ChangeEvent, FormEvent, ReactNode } from "react";
 import type { MatchdayProgress, VideoMetadata } from "lib/matchday";
 import { LoginForm } from "components/login-form";
 import { OpenInNew } from "@mui/icons-material";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 type Props = { readonly authenticated: boolean; readonly initialMetadata: VideoMetadata | null; };
 
@@ -67,20 +67,16 @@ function formatDuration(duration?: number): string {
 }
 
 /**
- * Formats an upload timestamp in UTC.
+ * Formats an upload timestamp in the user's local timezone.
  * @param uploadedAt - The ISO timestamp.
  * @returns The formatted timestamp.
  */
 function formatUploadedAt(uploadedAt: string): string {
-    const date = new Date(uploadedAt);
-    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-    const day = date.getUTCDate();
-    const month = months[date.getUTCMonth()];
-    const year = date.getUTCFullYear();
-    const hours = String(date.getUTCHours()).padStart(2, "0");
-    const minutes = String(date.getUTCMinutes()).padStart(2, "0");
-
-    return `${day} ${month} ${year} at ${hours}:${minutes}`;
+    return new Intl.DateTimeFormat(undefined, {
+        dateStyle: "full",
+        timeStyle: "short",
+        timeZoneName: "short",
+    }).format(new Date(uploadedAt));
 }
 
 /**
@@ -123,6 +119,47 @@ export function MatchdayManager({ authenticated, initialMetadata }: Props): Reac
         setProgress(0);
     }
 
+    useEffect(() => {
+        if (!loggedIn)
+            return undefined;
+
+        const progressSource = new EventSource("/api/matchday/progress");
+
+        progressSource.onmessage = (message: MessageEvent<string>): void => {
+            try {
+                const update = JSON.parse(message.data) as MatchdayProgress;
+
+                if (update.state === "uploading") {
+                    setState(States.Uploading);
+                    setProgress(update.progress);
+                } else if (update.state === "optimising") {
+                    setState(States.OptimisingForDisplay);
+                    setProgress(update.progress);
+                } else if (update.state === "active") {
+                    if (update.metadata)
+                        setMetadata(update.metadata);
+
+                    setState(States.Active);
+                    setFile(null);
+                    setProgress(100);
+                } else if (update.state === "error") {
+                    setState(States.UploadFailed);
+                    setError(update.error ?? "Upload failed; the existing video remains active.");
+                }
+            } catch {
+                // Ignore malformed progress events.
+            }
+        };
+
+        progressSource.onerror = (): void => {
+            // EventSource automatically reconnects.
+        };
+
+        return (): void => {
+            progressSource.close();
+        };
+    }, [loggedIn]);
+
     /**
      * Uploads and activates the selected video.
      * @param event - The form submit event.
@@ -140,36 +177,7 @@ export function MatchdayManager({ authenticated, initialMetadata }: Props): Reac
         setState(States.Uploading);
         setProgress(0);
 
-        const progressSource = new EventSource("/api/matchday/progress");
         const request = new XMLHttpRequest();
-        let activated = false;
-
-        progressSource.onmessage = (message: { data: string; }): void => {
-            try {
-                const update = JSON.parse(message.data) as MatchdayProgress;
-
-                if (update.state === "optimising") {
-                    setState(States.OptimisingForDisplay);
-                    setProgress(update.progress);
-                } else if (update.state === "active") {
-                    activated = true;
-
-                    if (update.metadata)
-                        setMetadata(update.metadata);
-
-                    setState(States.Active);
-                    setFile(null);
-                    setProgress(100);
-                    progressSource.close();
-                } else if (update.state === "error") {
-                    setState(States.UploadFailed);
-                    setError(update.error ?? "Upload failed; the existing video remains active.");
-                    progressSource.close();
-                }
-            } catch {
-            // Ignore malformed progress events.
-            }
-        };
 
         request.upload.onprogress = (progressEvent): void => {
             if (progressEvent.lengthComputable)
@@ -182,26 +190,18 @@ export function MatchdayManager({ authenticated, initialMetadata }: Props): Reac
         };
 
         request.onload = (): void => {
-            progressSource.close();
-
             if (request.status >= 200 && request.status < 300) {
-                if (!activated) {
-                    setMetadata(JSON.parse(request.responseText) as VideoMetadata);
-                    setState(States.Active);
-                    setFile(null);
-                    setProgress(100);
-                }
-            } else if (!activated) {
+                setMetadata(JSON.parse(request.responseText) as VideoMetadata);
+                setState(States.Active);
+                setFile(null);
+                setProgress(100);
+            } else {
                 setState(States.UploadFailed);
                 setError(parseUploadError(request.responseText));
             }
         };
 
         request.onerror = (): void => {
-            if (activated)
-                return;
-
-            progressSource.close();
             setState(States.UploadFailed);
             setError("The connection failed; the existing video remains active.");
         };
