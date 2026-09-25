@@ -350,6 +350,12 @@ export function MatchdayManager({ authenticated, initialMetadata }: Props): Reac
                         <Button
                             component="label"
                             disabled={state === States.Uploading || state === States.OptimisingForDisplay}
+                            onKeyDown={(event): void => {
+                                if (event.key === "Enter" && file) {
+                                    event.preventDefault();
+                                    event.currentTarget.form?.requestSubmit(uploadButtonRef.current ?? undefined);
+                                }
+                            }}
                             tabIndex={-1}
                             sx={{
                                 justifyContent: "flex-start",
