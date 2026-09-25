@@ -17,9 +17,9 @@ import {
 } from "@mui/material";
 import type { ChangeEvent, FormEvent, ReactNode } from "react";
 import type { MatchdayProgress, VideoMetadata } from "lib/matchday";
+import { useEffect, useRef, useState } from "react";
 import { LoginForm } from "components/login-form";
 import { OpenInNew } from "@mui/icons-material";
-import { useEffect, useRef, useState } from "react";
 
 type Props = { readonly authenticated: boolean; readonly initialMetadata: VideoMetadata | null; };
 
@@ -73,13 +73,13 @@ function formatDuration(duration?: number): string {
  */
 function formatUploadedAt(uploadedAt: string): string {
     return new Intl.DateTimeFormat(undefined, {
-        weekday: "long",
         day: "numeric",
-        month: "short",
-        year: "numeric",
         hour: "2-digit",
         minute: "2-digit",
+        month: "short",
         timeZoneName: "short",
+        weekday: "long",
+        year: "numeric",
     }).format(new Date(uploadedAt));
 }
 
@@ -134,7 +134,7 @@ export function MatchdayManager({ authenticated, initialMetadata }: Props): Reac
 
     useEffect(() => {
         if (!loggedIn)
-            return undefined;
+            return (): void => undefined;
 
         const progressSource = new EventSource("/api/matchday/progress");
 
@@ -168,9 +168,7 @@ export function MatchdayManager({ authenticated, initialMetadata }: Props): Reac
             // EventSource automatically reconnects.
         };
 
-        return (): void => {
-            progressSource.close();
-        };
+        return (): void => progressSource.close();
     }, [loggedIn]);
 
     /**
@@ -266,61 +264,64 @@ export function MatchdayManager({ authenticated, initialMetadata }: Props): Reac
                         Current video
                     </Typography>
                     {metadata
-                        ? <Stack spacing={3} sx={{ mt: 2 }}>
-                            <Typography
-                                sx={{ fontSize: "2rem", overflowWrap: "anywhere" }}
-                                variant="h2"
-                            >
-                                {metadata.filename}
-                            </Typography>
-                            <TableContainer>
-                                <Table size="small" sx={{ borderTop: 1 }}>
-                                    <TableBody>
-                                        {Object.entries({
-                                            Codec: metadata.videoCodec ?? "Unknown",
-                                            Duration: formatDuration(metadata.duration),
-                                            Resolution: `${metadata.width} × ${metadata.height}`,
-                                            Size: formatBytes(metadata.size),
-                                            Uploaded: mounted ? formatUploadedAt(metadata.uploadedAt) : "Loading...",
-                                        }).map(([label, value]): ReactNode => (
-                                            <TableRow key={label}>
-                                                <TableCell
-                                                    sx={{
-                                                        borderColor: "primary.main",
-                                                        fontWeight: 700,
-                                                        letterSpacing: ".08em",
-                                                        textTransform: "uppercase",
-                                                    }}
-                                                    variant="head"
-                                                >
-                                                    {label}
-                                                </TableCell>
-                                                <TableCell
-                                                    align="right"
-                                                    sx={{
-                                                        borderColor: "primary.main",
-                                                        color: "text.secondary",
-                                                        fontWeight: 500,
-                                                    }}
-                                                >
-                                                    {value}
-                                                </TableCell>
-                                            </TableRow>
-                                        ))}
-                                    </TableBody>
-                                </Table>
-                            </TableContainer>
-                            <Button
-                                href="/current.mp4"
-                                rel="noreferrer"
-                                sx={{ alignSelf: "flex-start", px: 0 }}
-                                target="_blank"
-                                variant="text"
-                            >
-                                Preview current video <OpenInNew />
-                            </Button>
-                            {/* eslint-disable-next-line react/jsx-closing-tag-location */}
-                        </Stack>
+                        ? (
+                            <Stack spacing={3} sx={{ mt: 2 }}>
+                                <Typography
+                                    sx={{ fontSize: "2rem", overflowWrap: "anywhere" }}
+                                    variant="h2"
+                                >
+                                    {metadata.filename}
+                                </Typography>
+                                <TableContainer>
+                                    <Table size="small" sx={{ borderTop: 1 }}>
+                                        <TableBody>
+                                            {Object.entries({
+                                                Codec: metadata.videoCodec ?? "Unknown",
+                                                Duration: formatDuration(metadata.duration),
+                                                Resolution: `${metadata.width} × ${metadata.height}`,
+                                                Size: formatBytes(metadata.size),
+                                                Uploaded: mounted
+                                                    ? formatUploadedAt(metadata.uploadedAt)
+                                                    : "Loading...",
+                                            }).map(([label, value]): ReactNode => (
+                                                <TableRow key={label}>
+                                                    <TableCell
+                                                        sx={{
+                                                            borderColor: "primary.main",
+                                                            fontWeight: 700,
+                                                            letterSpacing: ".08em",
+                                                            textTransform: "uppercase",
+                                                        }}
+                                                        variant="head"
+                                                    >
+                                                        {label}
+                                                    </TableCell>
+                                                    <TableCell
+                                                        align="right"
+                                                        sx={{
+                                                            borderColor: "primary.main",
+                                                            color: "text.secondary",
+                                                            fontWeight: 500,
+                                                        }}
+                                                    >
+                                                        {value}
+                                                    </TableCell>
+                                                </TableRow>
+                                            ))}
+                                        </TableBody>
+                                    </Table>
+                                </TableContainer>
+                                <Button
+                                    href="/current.mp4"
+                                    rel="noreferrer"
+                                    sx={{ alignSelf: "flex-start", px: 0 }}
+                                    target="_blank"
+                                    variant="text"
+                                >
+                                    Preview current video <OpenInNew />
+                                </Button>
+                            </Stack>
+                        )
                         : (
                             <Typography sx={{ mt: 2 }}>
                                 No video has been uploaded yet.
@@ -356,7 +357,6 @@ export function MatchdayManager({ authenticated, initialMetadata }: Props): Reac
                                     event.currentTarget.form?.requestSubmit(uploadButtonRef.current ?? undefined);
                                 }
                             }}
-                            tabIndex={-1}
                             sx={{
                                 justifyContent: "flex-start",
                                 maxWidth: "100%",
@@ -367,6 +367,7 @@ export function MatchdayManager({ authenticated, initialMetadata }: Props): Reac
                                 textOverflow: "ellipsis",
                                 whiteSpace: "nowrap",
                             }}
+                            tabIndex={-1}
                             variant="outlined"
                         >
                             {file ? file.name : "Choose an MP4 file"}

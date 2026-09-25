@@ -1,10 +1,8 @@
-import type { ReactNode } from "react";
-import { redirect } from "next/navigation";
-// eslint-disable-next-line sort-imports
-import { hasMatchdaySession } from "lib/auth";
-// eslint-disable-next-line sort-imports
 import { MatchdayManager } from "components/matchday-manager";
+import type { ReactNode } from "react";
+import { hasMatchdaySession } from "lib/auth";
 import { readVideoMetadata } from "lib/matchday";
+import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 

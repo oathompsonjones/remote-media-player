@@ -15,10 +15,14 @@ export async function GET(): Promise<Response> {
     const encoder = new TextEncoder();
 
     let cancelled = false;
-    let unsubscribe = (): void => {};
+    let unsubscribe: (() => void) | undefined;
 
     const stream = new ReadableStream({
-        start(controller) {
+        cancel(): void {
+            cancelled = true;
+            unsubscribe?.();
+        },
+        start(controller): void {
             const send = (progress: ReturnType<typeof getMatchdayProgress>): void => {
                 if (cancelled)
                     return;
@@ -27,16 +31,12 @@ export async function GET(): Promise<Response> {
                     controller.enqueue(encoder.encode(`data: ${JSON.stringify(progress)}\n\n`));
                 } catch {
                     cancelled = true;
-                    unsubscribe();
+                    unsubscribe?.();
                 }
             };
 
             unsubscribe = subscribeMatchdayProgress(send);
             send(getMatchdayProgress());
-        },
-        cancel() {
-            cancelled = true;
-            unsubscribe();
         },
     });
 

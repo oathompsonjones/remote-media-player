@@ -229,7 +229,9 @@ async function inspectVideo(
         throw new Error("The file does not contain a usable video stream");
 
     return {
-        ...parsedDuration !== undefined && Number.isFinite(parsedDuration) && parsedDuration > 0 ? { duration: parsedDuration } : {},
+        ...parsedDuration !== undefined && Number.isFinite(parsedDuration) && parsedDuration > 0
+            ? { duration: parsedDuration }
+            : {},
         height,
         videoCodec,
         width,
@@ -339,6 +341,7 @@ async function transcodeForDisplay(inputPath: string, outputPath: string, durati
  * Streams an upload body to disk, enforcing the maximum size.
  * @param body - The incoming video stream.
  * @param destinationPath - The file to write to.
+ * @param contentLength - The optional content length of the upload.
  */
 async function writeUploadToDisk(
     body: ReadableStream<Uint8Array>,

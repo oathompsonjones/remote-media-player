@@ -1,10 +1,8 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-// eslint-disable-next-line sort-imports
-import type { ReactNode } from "react";
-// eslint-disable-next-line sort-imports
 import { LoginForm } from "components/login-form";
+import type { ReactNode } from "react";
+import { useRouter } from "next/navigation";
 
 /**
  * Renders the matchday manager login page.
