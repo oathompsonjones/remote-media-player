@@ -73,8 +73,12 @@ function formatDuration(duration?: number): string {
  */
 function formatUploadedAt(uploadedAt: string): string {
     return new Intl.DateTimeFormat(undefined, {
-        dateStyle: "full",
-        timeStyle: "short",
+        weekday: "long",
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
         timeZoneName: "short",
     }).format(new Date(uploadedAt));
 }
