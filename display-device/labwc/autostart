@@ -1,0 +1,7 @@
+# Wait for the local playback server, then launch Chromium in kiosk mode.
+while ! curl -sf http://127.0.0.1:8787/ >/dev/null; do sleep 1; done
+sleep 2
+/usr/bin/chromium --ozone-platform=wayland --kiosk --noerrdialogs --disable-infobars --password-store=basic --autoplay-policy=no-user-gesture-required http://127.0.0.1:8787/ &
+
+# Start the VNC server for remote administration.
+XDG_RUNTIME_DIR=/run/user/1001 WAYLAND_DISPLAY=wayland-0 /usr/bin/wayvnc --config=/home/display/.config/wayvnc/config &
