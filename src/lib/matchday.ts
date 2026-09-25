@@ -219,6 +219,7 @@ async function inspectVideo(
     const video = probe.streams?.find((stream) => stream.codec_type === "video");
     const audio = probe.streams?.find((stream) => stream.codec_type === "audio");
     const duration = probe.format?.duration;
+    const parsedDuration = duration === undefined ? undefined : Number(duration);
     const audioCodec = audio?.codec_name;
     const videoCodec = video?.codec_name;
     const height = video?.height;
@@ -228,7 +229,7 @@ async function inspectVideo(
         throw new Error("The file does not contain a usable video stream");
 
     return {
-        ...duration === undefined ? {} : { duration: Number(duration) },
+        ...parsedDuration !== undefined && Number.isFinite(parsedDuration) && parsedDuration > 0 ? { duration: parsedDuration } : {},
         height,
         videoCodec,
         width,
