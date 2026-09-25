@@ -193,11 +193,6 @@ export function MatchdayManager({ authenticated, initialMetadata }: Props): Reac
                 setProgress(Math.round(progressEvent.loaded / progressEvent.total * 100));
         };
 
-        request.upload.onload = (): void => {
-            setState(States.OptimisingForDisplay);
-            setProgress(0);
-        };
-
         request.onload = (): void => {
             if (request.status >= 200 && request.status < 300) {
                 setMetadata(JSON.parse(request.responseText) as VideoMetadata);
