@@ -269,10 +269,10 @@ export function MatchdayManager({ authenticated, initialMetadata }: Props): Reac
                         }}
                         variant="h1"
                     >
-                        Video Uploader
+                        Display Manager
                     </Typography>
                     <Typography sx={{ fontSize: "1.2rem", mt: 1 }}>
-                        Only one video can be uploaded at a time.
+                        Manage the content shown on the clubhouse displays.
                     </Typography>
                 </Box>
             </Stack>
@@ -358,13 +358,12 @@ export function MatchdayManager({ authenticated, initialMetadata }: Props): Reac
                         Replace video
                     </Typography>
                     <Typography sx={{ fontSize: "2rem", mb: 3, mt: 2 }} variant="h2">
-                        Prepare the next display
+                        Upload a new video
                     </Typography>
                     <Typography color="textSecondary" sx={{ mb: 3 }}>
-                        Uploading a new video will replace the current matchday video after validation.
-                        It will be re-encoded for smooth playback on the display before it goes live, so
-                        activation may take a few minutes after the upload finishes. The existing video
-                        stays active if anything fails.
+                        Upload a new video to replace the current one.
+                        The video will be validated and re-encoded for smooth playback before going live.
+                        The current video will remain active until the new video is ready.
                     </Typography>
                     {/* eslint-disable react/jsx-no-bind */}
                     <Stack
