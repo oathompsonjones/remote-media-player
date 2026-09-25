@@ -24,7 +24,7 @@ export async function GET(): Promise<Response> {
                     return;
 
                 try {
-                    controller.enqueue(encoder.encode(`data: ${JSON.stringify(progress)}\\n\\n`));
+                    controller.enqueue(encoder.encode(`data: ${JSON.stringify(progress)}\n\n`));
                 } catch {
                     cancelled = true;
                     unsubscribe();
