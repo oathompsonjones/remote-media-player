@@ -346,6 +346,7 @@ export function MatchdayManager({ authenticated, initialMetadata }: Props): Reac
                         <Button
                             component="label"
                             disabled={state === States.Uploading || state === States.OptimisingForDisplay}
+                            tabIndex={-1}
                             sx={{
                                 justifyContent: "flex-start",
                                 maxWidth: "100%",
