@@ -109,6 +109,7 @@ export function MatchdayManager({ authenticated, initialMetadata }: Props): Reac
     const [progress, setProgress] = useState(0);
     const [state, setState] = useState(States.Ready);
     const [error, setError] = useState("");
+    const [mounted, setMounted] = useState(false);
 
     /**
      * Handles a selected video file.
@@ -122,6 +123,10 @@ export function MatchdayManager({ authenticated, initialMetadata }: Props): Reac
         setState(selected ? States.ReadyToUpload : States.Ready);
         setProgress(0);
     }
+
+    useEffect(() => {
+        setMounted(true);
+    }, []);
 
     useEffect(() => {
         if (!loggedIn)
@@ -277,7 +282,7 @@ export function MatchdayManager({ authenticated, initialMetadata }: Props): Reac
                                             Duration: formatDuration(metadata.duration),
                                             Resolution: `${metadata.width} × ${metadata.height}`,
                                             Size: formatBytes(metadata.size),
-                                            Uploaded: formatUploadedAt(metadata.uploadedAt),
+                                            Uploaded: mounted ? formatUploadedAt(metadata.uploadedAt) : "Loading...",
                                         }).map(([label, value]): ReactNode => (
                                             <TableRow key={label}>
                                                 <TableCell
