@@ -1,0 +1,15 @@
+[Unit]
+Description=Rugby Club local video cache and playback server
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/rugby-display/display-device
+Environment=RUGBY_DISPLAY_DIR=/opt/rugby-display/display-device/data
+Environment=RUGBY_DISPLAY_URL=https://bsrfc-video.oathompsonjones.co.uk
+ExecStart=/opt/rugby-display/display-device/start.sh
+Restart=always
+RestartSec=10
+User=display
+
+[Install]
+WantedBy=multi-user.target
