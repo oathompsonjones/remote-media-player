@@ -1,11 +1,11 @@
 #!/bin/sh
-# Pulls the latest version of the repo before (re)building and starting the display server.
+# Builds and starts the local display server.
+# This script must not require network access: the display can play its cached
+# video while the VPS is unreachable.
 set -e
 
 cd "$(dirname "$0")"
 
-git pull --ff-only
-npm install
 npm run build
 
 exec node dist/display.js
