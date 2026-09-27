@@ -19,7 +19,7 @@ import type { ChangeEvent, FormEvent, ReactNode } from "react";
 import type { MatchdayProgress, VideoMetadata } from "lib/matchday";
 import { useEffect, useRef, useState } from "react";
 import { LoginForm } from "components/login-form";
-import { OpenInNew } from "@mui/icons-material";
+import { Download, OpenInNew } from "@mui/icons-material";
 
 type Props = { readonly authenticated: boolean; readonly initialMetadata: VideoMetadata | null; };
 
@@ -403,6 +403,15 @@ export function MatchdayManager({ authenticated, initialMetadata }: Props): Reac
                             variant="contained"
                         >
                             Upload and activate
+                        </Button>
+                        <Button
+                            disabled={!metadata || isInProgress(state)}
+                            download={metadata?.filename ?? "current.mp4"}
+                            href="/current.mp4"
+                            startIcon={<Download />}
+                            variant="outlined"
+                        >
+                            Download optimised video
                         </Button>
                         {isInProgress(state) && (
                             <LinearProgress
