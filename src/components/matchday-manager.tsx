@@ -16,10 +16,10 @@ import {
     Typography,
 } from "@mui/material";
 import type { ChangeEvent, FormEvent, ReactNode } from "react";
+import { Download, OpenInNew } from "@mui/icons-material";
 import type { MatchdayProgress, VideoMetadata } from "lib/matchday";
 import { useEffect, useRef, useState } from "react";
 import { LoginForm } from "components/login-form";
-import { Download, OpenInNew } from "@mui/icons-material";
 
 type Props = { readonly authenticated: boolean; readonly initialMetadata: VideoMetadata | null; };
 
