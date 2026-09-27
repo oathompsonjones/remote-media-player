@@ -26,11 +26,10 @@ type Props = { readonly authenticated: boolean; readonly initialMetadata: VideoM
 type UploadError = { readonly error?: string; };
 
 const enum States {
-    Ready = "Ready",
+    Idle = "Idle",
     ReadyToUpload = "Ready to upload",
     Uploading = "Uploading",
     OptimisingForDisplay = "Optimising for display",
-    Active = "Active",
     UploadFailed = "Upload failed",
 }
 
@@ -132,7 +131,7 @@ export function MatchdayManager({ authenticated, initialMetadata }: Props): Reac
     const [metadata, setMetadata] = useState(initialMetadata);
     const [file, setFile] = useState<File | null>(null);
     const [progress, setProgress] = useState(0);
-    const [state, setState] = useState(States.Ready);
+    const [state, setState] = useState(States.Idle);
     const [error, setError] = useState("");
     const [mounted, setMounted] = useState(false);
     const uploadButtonRef = useRef<HTMLButtonElement>(null);
@@ -146,7 +145,7 @@ export function MatchdayManager({ authenticated, initialMetadata }: Props): Reac
 
         setFile(selected);
         setError("");
-        setState(selected ? States.ReadyToUpload : States.Ready);
+        setState(selected ? States.ReadyToUpload : States.Idle);
         setProgress(0);
 
         if (selected)
@@ -177,9 +176,9 @@ export function MatchdayManager({ authenticated, initialMetadata }: Props): Reac
                     if (update.metadata)
                         setMetadata(update.metadata);
 
-                    setState(States.Active);
+                    setState(States.Idle);
                     setFile(null);
-                    setProgress(100);
+                    setProgress(0);
                 } else if (update.state === "error") {
                     setState(States.UploadFailed);
                     setError(update.error ?? "Upload failed; the existing video remains active.");
@@ -223,9 +222,9 @@ export function MatchdayManager({ authenticated, initialMetadata }: Props): Reac
         request.onload = (): void => {
             if (request.status >= 200 && request.status < 300) {
                 setMetadata(JSON.parse(request.responseText) as VideoMetadata);
-                setState(States.Active);
+                setState(States.Idle);
                 setFile(null);
-                setProgress(100);
+                setProgress(0);
             } else {
                 setState(States.UploadFailed);
                 setError(parseUploadError(request.responseText));
