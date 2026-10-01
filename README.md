@@ -33,7 +33,7 @@ Install Node.js, npm, Chromium, curl, Git, and systemd:
 
 ```sh
 sudo apt update
-sudo apt install nodejs npm chromium curl git systemd
+sudo apt install nodejs npm chromium curl git systemd lightdm labwc
 ```
 
 Check the versions and architecture:
@@ -92,9 +92,21 @@ sudo install -d -o display -g display -m 755 /home/display/.config/labwc
 sudo install -o display -g display -m 644 labwc/autostart /home/display/.config/labwc/autostart
 ```
 
-Configure the machine's graphical login manager to automatically log into the graphical session as `display`, with the display connected to the required HDMI output.
+Configure LightDM to automatically log into the graphical session as `display`. Create a LightDM configuration file:
 
-If you use a different Wayland compositor or desktop environment, configure its equivalent graphical-session autostart mechanism to wait for `http://127.0.0.1:8787/` and then launch Chromium in kiosk mode against that URL. The application itself does not require labwc.
+```sh
+sudo install -d -m 755 /etc/lightdm/lightdm.conf.d
+sudo sh -c 'printf "[Seat:*]\\nautologin-user=display\\nautologin-user-timeout=0\\n" > /etc/lightdm/lightdm.conf.d/50-display-autologin.conf'
+```
+
+Enable the graphical target so the graphical session starts automatically:
+
+```sh
+sudo systemctl set-default graphical.target
+sudo systemctl enable lightdm
+```
+
+If you use a different graphical login manager, configure its equivalent automatic-login setting for the `display` user instead. The important requirement is that the `display` user is automatically logged into a graphical labwc session at boot.
 
 ### 5. Install and enable the systemd service
 
