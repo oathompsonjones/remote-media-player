@@ -4,6 +4,7 @@ import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { createServer } from "node:http";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 type RemoteVideo = Readonly<{
     downloadUrl: string;
@@ -17,6 +18,7 @@ const serverUrl = (process.env.RUGBY_DISPLAY_URL ?? "https://example.com").repla
 const port = Number(process.env.RUGBY_DISPLAY_PORT ?? 8787);
 const videoPath = path.join(root, "current.mp4");
 const metadataPath = path.join(root, "metadata.json");
+const displayDirectory = path.dirname(fileURLToPath(import.meta.url));
 
 /**
  * Reads metadata for the locally cached video.
@@ -128,14 +130,14 @@ async function serveLocalMetadata(response: ServerResponse): Promise<void> {
  */
 async function servePlaybackPage(response: ServerResponse): Promise<void> {
     response.setHeader("content-type", "text/html");
-    response.end(await readFile(path.join(import.meta.dirname, "playback.html")));
+    response.end(await readFile(path.join(displayDirectory, "playback.html")));
 }
 
 /**
  * Parses a byte-range request for the current video.
  * @param rangeHeader - The Range header value from the request.
- * @param fileSize - The size of the video file in bytes.
- * @returns The start and end positions for the requested range, or null if the range is invalid.
+ * @param fileSize - The size of the requested file.
+ * @returns The start and end positions for the requested video range, or null if the range is invalid.
  */
 function parseVideoRange(rangeHeader: string, fileSize: number): Readonly<{
     contentLength: number;
