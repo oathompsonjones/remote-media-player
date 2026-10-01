@@ -16,7 +16,7 @@ update_display_software() {
     local_commit="$(git rev-parse HEAD)"
 
     if [ "$remote_commit" = "$local_commit" ]; then
-        return 0
+        return 2
     fi
 
     echo "Display software update available; updating from $local_commit to $remote_commit"
@@ -37,9 +37,15 @@ update_display_software() {
 echo "Checking for display software updates"
 
 if update_display_software; then
-    echo "Display software is up to date"
+    echo "Display software updated"
 else
-    echo "Display software update unavailable; using existing display software"
+    update_status=$?
+
+    if [ "$update_status" -eq 2 ]; then
+        echo "Display software is up to date"
+    else
+        echo "Display software update unavailable; using existing display software"
+    fi
 fi
 
 npm run build
