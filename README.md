@@ -107,12 +107,6 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now rugby-display.service
 ```
 
-If this machine previously used the old standalone `chromium-kiosk.service`, remove it so that two Chromium instances are not started:
-
-```sh
-sudo systemctl disable --now chromium-kiosk.service 2>/dev/null || true
-sudo rm -f /etc/systemd/system/chromium-kiosk.service
-```
 
 The labwc autostart waits for the local playback server at `http://127.0.0.1:8787/`, then opens it in Chromium kiosk mode.
 
