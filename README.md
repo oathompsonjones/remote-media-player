@@ -23,49 +23,107 @@ Configure the existing VPS reverse proxy to pass `/matchday`, `/api`, and the Ne
 
 ## Display device setup
 
-On the display device's operating system, install Node.js 22+, Chromium, `curl`, Git, and systemd prerequisites. Clone this repository to `/opt/rugby-display`:
+The display device can be any Linux machine capable of running Chromium and Node.js, including Raspberry Pi boards. The exact Node.js version depends on the machine's CPU architecture and operating system: use the newest Node.js version supported by the platform that is compatible with this application. For example, current Debian/Raspbian packages provide Node.js 18 for the original ARMv6 Raspberry Pi Zero W, while newer Raspberry Pi models can use newer Node.js releases.
+
+The commands below target Debian/Raspbian-based systems. On another Linux distribution, install the equivalent packages using its package manager.
+
+### 1. Install prerequisites
+
+Install Node.js, npm, Chromium, curl, Git, and systemd:
 
 ```sh
-sudo git clone https://github.com/oathompsonjones/remote-media-player.git /opt/rugby-display
-sudo chown -R display:display /opt/rugby-display
-cd /opt/rugby-display/display-device
-npm install
+sudo apt update
+sudo apt install nodejs npm chromium curl git systemd
 ```
 
-The initial `npm install` requires network access, but it is not required for subsequent offline boots.
+Check the versions and architecture:
 
-Install the display service and labwc autostart configuration:
+```sh
+node --version
+npm --version
+uname -m
+```
+
+The display application does not require Node.js 22 specifically. On platforms that cannot run Node.js 22 or newer, an older supported Node.js release can be used. The display device's `start.sh` only requires a working Node.js runtime and npm installation.
+
+Chromium must be available as the `chromium` executable. If your distribution installs it under a different name, either install/configure the equivalent Chromium package or adjust the labwc autostart command accordingly.
+
+### 2. Create the display service user
+
+The systemd service runs as a dedicated `display` user. If your operating system does not already provide one, create it:
+
+```sh
+sudo useradd --system --create-home --home-dir /home/display --shell /bin/bash display
+```
+
+The display user needs access to the graphical/video devices. On systems that provide these groups, add it to `video` and `render`:
+
+```sh
+getent group video >/dev/null && sudo usermod -aG video display || true
+getent group render >/dev/null && sudo usermod -aG render display || true
+```
+
+If you use a different user instead, replace `display` consistently in the systemd service, file ownership, and graphical-session configuration.
+
+### 3. Clone and install the display application
+
+Clone the repository and make the display user the owner:
+
+```sh
+sudo git clone --depth=1 https://github.com/oathompsonjones/remote-media-player.git /opt/rugby-display
+sudo chown -R display:display /opt/rugby-display
+```
+
+Install the display application's dependencies:
+
+```sh
+cd /opt/rugby-display/display-device
+sudo -u display npm install
+```
+
+The initial `npm install` requires network access. It is not required for subsequent offline boots unless the display software is updated.
+
+### 4. Configure the graphical session
+
+The supplied autostart file is written for labwc. If the machine uses labwc, create its configuration directory and install the autostart file:
+
+```sh
+sudo install -d -o display -g display -m 755 /home/display/.config/labwc
+sudo install -o display -g display -m 644 labwc/autostart /home/display/.config/labwc/autostart
+```
+
+Configure the machine's graphical login manager to automatically log into the graphical session as `display`, with the display connected to the required HDMI output.
+
+If you use a different Wayland compositor or desktop environment, configure its equivalent graphical-session autostart mechanism to wait for `http://127.0.0.1:8787/` and then launch Chromium in kiosk mode against that URL. The application itself does not require labwc.
+
+### 5. Install and enable the systemd service
+
+Install the service:
 
 ```sh
 sudo install -o root -g root -m 644 systemd/rugby-display.service /etc/systemd/system/rugby-display.service
-sudo install -o display -g display -m 644 labwc/autostart /home/display/.config/labwc/autostart
-
-sudo systemctl disable --now chromium-kiosk.service 2>/dev/null || true
-sudo rm -f /etc/systemd/system/chromium-kiosk.service
 
 sudo systemctl daemon-reload
 sudo systemctl enable --now rugby-display.service
 ```
 
-Configure the display device to log into its graphical session automatically as `display`, with HDMI connected to the distribution system. The labwc autostart waits for the local playback server at `http://127.0.0.1:8787/`, then opens it in Chromium kiosk mode.
+If this machine previously used the old standalone `chromium-kiosk.service`, remove it so that two Chromium instances are not started:
+
+```sh
+sudo systemctl disable --now chromium-kiosk.service 2>/dev/null || true
+sudo rm -f /etc/systemd/system/chromium-kiosk.service
+```
+
+The labwc autostart waits for the local playback server at `http://127.0.0.1:8787/`, then opens it in Chromium kiosk mode.
+
+### 6. First synchronisation
 
 The display server starts independently of the network. On startup, `start.sh` checks whether the GitHub remote is reachable. If it is, it attempts a fast-forward-only `git pull` and `npm install`; if the network is unavailable, the update is skipped. If an update fails, the existing checkout is used and startup continues. The display then builds and starts the local server regardless.
 
 The local server serves the cached video locally, then attempts to synchronise with the VPS. If the VPS or network is unavailable, synchronisation fails harmlessly and the existing local video remains available. This means the display can boot, start Chromium, and play its cached video with no network connection at all.
 
-The first boot needs one successful sync before there is anything to play. The display device does not need an administrator login or upload credentials.
+The first boot needs one successful sync before there is anything to play. Connect the machine to the network for the initial synchronisation, then verify that a video is cached before deploying it somewhere without network access.
 
-### Updating the display device
-
-The display automatically checks for software updates whenever its service starts and the GitHub remote is reachable. To apply an update manually, or immediately after changing the configuration:
-
-```sh
-cd /opt/rugby-display
-git pull --ff-only
-cd display-device
-npm install
-sudo systemctl restart rugby-display.service
-```
 
 ## Operational notes
 
