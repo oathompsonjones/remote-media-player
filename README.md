@@ -92,12 +92,25 @@ sudo install -d -o display -g display -m 755 /home/display/.config/labwc
 sudo install -o display -g display -m 644 labwc/autostart /home/display/.config/labwc/autostart
 ```
 
-Configure LightDM to automatically log into the graphical session as `display`. Create a LightDM configuration file:
+Configure LightDM to automatically log into the graphical session as `display`. On Raspberry Pi OS, the default LightDM configuration may already contain an `autologin-user` setting. Replace its value with `display`:
 
 ```sh
-sudo install -d -m 755 /etc/lightdm/lightdm.conf.d
-sudo sh -c 'printf "[Seat:*]\\nautologin-user=display\\nautologin-user-timeout=0\\n" > /etc/lightdm/lightdm.conf.d/50-display-autologin.conf'
+sudo sed -i 's/^autologin-user=.*/autologin-user=display/' /etc/lightdm/lightdm.conf
 ```
+
+Verify the setting:
+
+```sh
+grep -n '^autologin-user=' /etc/lightdm/lightdm.conf
+```
+
+It should show:
+
+```
+autologin-user=display
+```
+
+If your LightDM installation does not already contain an `autologin-user` setting, add `autologin-user=display` under the appropriate `[Seat:*]` section instead.
 
 Enable the graphical target so the graphical session starts automatically:
 
