@@ -1,7 +1,7 @@
 import { AppBar, Box, Container, Toolbar, Typography } from "@mui/material";
 import Image from "next/image";
 import type { ReactNode } from "react";
-import logo from "../assets/images/logo.png";
+import logo from "assets/images/logo.png";
 
 /**
  * Contains the header element.

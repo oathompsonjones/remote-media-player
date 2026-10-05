@@ -6,7 +6,7 @@ import { Footer } from "components/footer";
 import { Header } from "components/header";
 import { Inter } from "next/font/google";
 import type { ReactNode } from "react";
-import logo from "../assets/images/logo.png";
+import logo from "assets/images/logo.png";
 
 // eslint-disable-next-line new-cap
 const inter = Inter({ subsets: ["latin"] });

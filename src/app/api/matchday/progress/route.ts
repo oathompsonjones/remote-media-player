@@ -1,5 +1,5 @@
-import { getMatchdayProgress, subscribeMatchdayProgress } from "../../../../lib/matchday";
-import { hasMatchdaySession } from "../../../../lib/auth";
+import { getMatchdayProgress, subscribeMatchdayProgress } from "lib/matchday";
+import { hasMatchdaySession } from "lib/auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

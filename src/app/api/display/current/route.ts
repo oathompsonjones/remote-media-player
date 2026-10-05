@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { readVideoMetadata } from "../../../../lib/matchday";
+import { readVideoMetadata } from "lib/matchday";
 
 export const dynamic = "force-dynamic";
 

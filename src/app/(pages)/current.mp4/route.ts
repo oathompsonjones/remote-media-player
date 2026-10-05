@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { Readable } from "node:stream";
 import { createReadStream } from "node:fs";
-import { videoStats } from "../../../lib/matchday";
+import { videoStats } from "lib/matchday";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

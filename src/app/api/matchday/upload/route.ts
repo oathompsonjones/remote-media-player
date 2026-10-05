@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { hasMatchdaySession } from "../../../../lib/auth";
-import { replaceVideo } from "../../../../lib/matchday";
+import { hasMatchdaySession } from "lib/auth";
+import { replaceVideo } from "lib/matchday";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

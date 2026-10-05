@@ -1,4 +1,4 @@
-import { createSessionToken, credentialsAreValid } from "../../../../lib/matchday";
+import { createSessionToken, credentialsAreValid } from "lib/matchday";
 import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
