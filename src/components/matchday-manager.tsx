@@ -266,7 +266,7 @@ export function MatchdayManager({ authenticated, initialMetadata }: Props): Reac
                                 if (status.ok) {
                                     const confirmedOffset = Number(status.headers.get("upload-offset"));
 
-                                    if (confirmedOffset > offset) {
+                                    if (confirmedOffset !== offset) {
                                         offset = confirmedOffset;
                                         acknowledged = true;
                                         continue;
@@ -277,6 +277,9 @@ export function MatchdayManager({ authenticated, initialMetadata }: Props): Reac
                             throw new Error(message);
                         }
                     } catch (error) {
+                        if (!(error instanceof TypeError))
+                            throw error;
+
                         if (attempt === 7)
                             throw new Error("Connection interrupted. Your upload is saved; press Upload and activate to resume.");
 
