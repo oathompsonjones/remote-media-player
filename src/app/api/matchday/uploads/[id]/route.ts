@@ -1,12 +1,18 @@
+import { appendUploadChunk, getUploadSession, maximumChunkSize } from "lib/resumable-upload";
 import { NextResponse } from "next/server";
 import { hasMatchdaySession } from "lib/auth";
-import { appendUploadChunk, getUploadSession, maximumChunkSize } from "lib/resumable-upload";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-type Context = { readonly params: Promise<{ readonly id: string }>; };
+type Context = { readonly params: Promise<{ readonly id: string; }>; };
 
+/**
+ * Handles the HTTP HEAD request for a specific upload session, returning its current status.
+ * @param _request - The incoming HTTP HEAD request.
+ * @param context - The context object containing route parameters.
+ * @returns A response with the current upload session status or an error message.
+ */
 export async function HEAD(_request: Request, context: Context): Promise<Response> {
     if (!await hasMatchdaySession())
         return new Response(null, { status: 401 });
@@ -16,11 +22,13 @@ export async function HEAD(_request: Request, context: Context): Promise<Respons
         const session = await getUploadSession(id);
 
         return new Response(null, {
+            /* eslint-disable @typescript-eslint/naming-convention */
             headers: {
+                "Cache-Control": "no-store",
                 "Upload-Length": String(session.size),
                 "Upload-Offset": String(session.offset),
-                "Cache-Control": "no-store",
             },
+            /* eslint-enable */
         });
     } catch (error) {
         return NextResponse.json(
@@ -30,6 +38,12 @@ export async function HEAD(_request: Request, context: Context): Promise<Respons
     }
 }
 
+/**
+ * Handles the HTTP PATCH request for a specific upload session, appending a new chunk of the video.
+ * @param request - The incoming HTTP PATCH request containing the video chunk.
+ * @param context - The context object containing route parameters.
+ * @returns A JSON response containing the new upload offset or an error message.
+ */
 export async function PATCH(request: Request, context: Context): Promise<NextResponse> {
     if (!await hasMatchdaySession())
         return NextResponse.json({ error: "Authentication required" }, { status: 401 });
@@ -53,7 +67,10 @@ export async function PATCH(request: Request, context: Context): Promise<NextRes
         const newOffset = await appendUploadChunk(id, offset, chunk);
 
         return NextResponse.json({ offset: newOffset }, {
-            headers: { "Upload-Offset": String(newOffset), "Cache-Control": "no-store" },
+            headers: {
+                // eslint-disable-next-line @typescript-eslint/naming-convention
+                "Cache-Control": "no-store", "Upload-Offset": String(newOffset),
+            },
         });
     } catch (error) {
         const message = error instanceof Error ? error.message : "Could not save upload chunk";

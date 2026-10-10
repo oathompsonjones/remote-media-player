@@ -3,8 +3,8 @@ import { createReadStream, createWriteStream } from "node:fs";
 import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { createServer } from "node:http";
-import path from "node:path";
 import { fileURLToPath } from "node:url";
+import path from "node:path";
 
 type RemoteVideo = Readonly<{
     downloadUrl: string;

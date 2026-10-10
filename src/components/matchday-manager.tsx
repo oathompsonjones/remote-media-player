@@ -49,11 +49,21 @@ function isInProgress(state: States): boolean {
  * @returns The appropriate refresh warning message.
  */
 function refreshWarning(state: States): ReactNode {
-    if (state === States.Uploading)
-        return <Typography color="textSecondary">If interrupted, reselect the same file to resume the upload.</Typography>;
+    if (state === States.Uploading) {
+        return (
+            <Typography color="textSecondary">
+                If interrupted, reselect the same file to resume the upload.
+            </Typography>
+        );
+    }
 
-    if (state === States.OptimisingForDisplay)
-        return <Typography color="textSecondary">It is safe to leave or refresh the page</Typography>;
+    if (state === States.OptimisingForDisplay) {
+        return (
+            <Typography color="textSecondary">
+                It is safe to leave or refresh the page
+            </Typography>
+        );
+    }
 
     return null;
 }
@@ -188,6 +198,7 @@ export function MatchdayManager({ authenticated, initialMetadata }: Props): Reac
      * Uploads and activates the selected video.
      * @param event - The form submit event.
      */
+    // eslint-disable-next-line max-statements
     async function upload(event: FormEvent<HTMLFormElement>): Promise<void> {
         event.preventDefault();
 
@@ -213,7 +224,7 @@ export function MatchdayManager({ authenticated, initialMetadata }: Props): Reac
             let sessionId = localStorage.getItem(storageKey);
             let offset = 0;
 
-            if (sessionId) {
+            if (sessionId !== null) {
                 const resume = await fetch(`/api/matchday/uploads/${sessionId}`, { method: "HEAD" });
 
                 if (resume.ok && Number(resume.headers.get("upload-length")) === file.size) {
@@ -224,19 +235,23 @@ export function MatchdayManager({ authenticated, initialMetadata }: Props): Reac
                 }
             }
 
-            if (!sessionId) {
+            if (sessionId === null) {
                 const create = await fetch("/api/matchday/uploads", {
                     body: JSON.stringify({ filename: file.name, size: file.size }),
-                    headers: { "content-type": "application/json" },
+                    headers: {
+                        // eslint-disable-next-line @typescript-eslint/naming-convention
+                        "content-type": "application/json",
+                    },
                     method: "POST",
                 });
 
                 if (!create.ok)
                     throw new Error(await readError(create));
 
-                const session = (await create.json()) as { id: string; offset: number; chunkSize: number };
+                const session = (await create.json()) as { id: string; offset: number; chunkSize: number; };
+
                 sessionId = session.id;
-                offset = session.offset;
+                ({ offset } = session);
                 localStorage.setItem(storageKey, sessionId);
             }
 
@@ -248,9 +263,13 @@ export function MatchdayManager({ authenticated, initialMetadata }: Props): Reac
 
                 for (let attempt = 0; !acknowledged; attempt += 1) {
                     try {
+                        // eslint-disable-next-line no-await-in-loop
                         const response = await fetch(`/api/matchday/uploads/${sessionId}`, {
                             body: chunk,
-                            headers: { "content-type": "application/offset+octet-stream", "upload-offset": String(offset) },
+                            headers: {
+                                // eslint-disable-next-line @typescript-eslint/naming-convention
+                                "content-type": "application/offset+octet-stream", "upload-offset": String(offset),
+                            },
                             method: "PATCH",
                         });
 
@@ -258,14 +277,19 @@ export function MatchdayManager({ authenticated, initialMetadata }: Props): Reac
                             offset = Number(response.headers.get("upload-offset"));
                             acknowledged = true;
                         } else {
+                            // eslint-disable-next-line no-await-in-loop
                             const message = await readError(response);
 
+                            // eslint-disable-next-line max-depth
                             if (response.status === 409) {
+                                // eslint-disable-next-line no-await-in-loop
                                 const status = await fetch(`/api/matchday/uploads/${sessionId}`, { method: "HEAD" });
 
+                                // eslint-disable-next-line max-depth
                                 if (status.ok) {
                                     const confirmedOffset = Number(status.headers.get("upload-offset"));
 
+                                    // eslint-disable-next-line max-depth
                                     if (confirmedOffset !== offset) {
                                         offset = confirmedOffset;
                                         acknowledged = true;
@@ -276,25 +300,28 @@ export function MatchdayManager({ authenticated, initialMetadata }: Props): Reac
 
                             throw new Error(message);
                         }
-                    } catch (error) {
-                        if (!(error instanceof TypeError))
-                            throw error;
+                    } catch (e) {
+                        if (!(e instanceof TypeError))
+                            throw e;
 
+                        // eslint-disable-next-line no-await-in-loop, no-promise-executor-return
                         await new Promise<void>((resolve) => setTimeout(resolve, Math.min(1000 * 2 ** attempt, 10000)));
 
+                        // eslint-disable-next-line no-await-in-loop
                         const status = await fetch(`/api/matchday/uploads/${sessionId}`, { method: "HEAD" });
 
                         if (status.ok) {
                             const confirmedOffset = Number(status.headers.get("upload-offset"));
 
+                            // eslint-disable-next-line max-depth
                             if (confirmedOffset > offset) {
                                 offset = confirmedOffset;
                                 acknowledged = true;
                             }
                         }
 
-                        if (error instanceof Error && error.message.startsWith("Upload session expired"))
-                            throw error;
+                        if (e instanceof Error && e.message.startsWith("Upload session expired"))
+                            throw e;
                     }
                 }
 
@@ -316,7 +343,9 @@ export function MatchdayManager({ authenticated, initialMetadata }: Props): Reac
             setProgress(0);
         } catch (uploadError) {
             setState(States.UploadFailed);
-            setError(uploadError instanceof Error ? uploadError.message : "Upload failed; the existing video remains active.");
+            setError(uploadError instanceof Error
+                ? uploadError.message
+                : "Upload failed; the existing video remains active.");
         }
     }
 
@@ -445,6 +474,7 @@ export function MatchdayManager({ authenticated, initialMetadata }: Props): Reac
                     {/* eslint-disable react/jsx-no-bind */}
                     <Stack
                         component="form"
+                        // eslint-disable-next-line @typescript-eslint/no-misused-promises
                         onSubmit={upload}
                         spacing={2}
                         sx={{ maxWidth: "100%", minWidth: 0, overflow: "hidden", width: "100%" }}

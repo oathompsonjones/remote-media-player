@@ -1,10 +1,11 @@
-import { randomUUID } from "node:crypto";
 import { mkdir, open, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
-import path from "node:path";
 import { maximumVideoSize } from "lib/matchday";
+import path from "node:path";
+import { randomUUID } from "node:crypto";
 
 const storageDirectory = process.env.MATCHDAY_STORAGE_PATH ?? "/var/lib/rugby-display";
 const uploadDirectory = path.join(storageDirectory, ".uploading", "resumable");
+
 export const maximumChunkSize = 8 * 1024 * 1024;
 const sessionLifetimeMilliseconds = 48 * 60 * 60 * 1000;
 
@@ -19,19 +20,35 @@ export type ResumableUploadStatus = ResumableUploadSession & {
     readonly offset: number;
 };
 
+/**
+ * Gets the file path to the session JSON file for a given upload session.
+ * @param id - The ID of the upload session to get the session file path for.
+ * @returns The file path to the session JSON file.
+ * @throws Will throw an error if the upload session ID is invalid.
+ */
 function sessionPath(id: string): string {
-    if (!/^[0-9a-f-]{36}$/iu.test(id))
+    if (!(/^[0-9a-f-]{36}$/iu).test(id))
         throw new Error("Invalid upload session");
 
     return path.join(uploadDirectory, `${id}.json`);
 }
 
+/**
+ * Gets the file path to the temporary part file for a given upload session.
+ * @param id - The ID of the upload session to get the part file path for.
+ * @returns The file path to the temporary part file.
+ */
 function partPath(id: string): string {
     sessionPath(id);
 
     return path.join(uploadDirectory, `${id}.part`);
 }
 
+/**
+ * Reads the details of an existing upload session.
+ * @param id - The ID of the upload session to read.
+ * @returns The upload session details.
+ */
 async function readSession(id: string): Promise<ResumableUploadSession> {
     const session = JSON.parse(await readFile(sessionPath(id), "utf8")) as ResumableUploadSession;
 
@@ -59,19 +76,25 @@ export async function createUploadSession(filename: string, size: number): Promi
     await mkdir(uploadDirectory, { recursive: true });
 
     // Expired sessions are removed opportunistically whenever a new upload begins.
-    for (const filename of await readdir(uploadDirectory)) {
-        if (!filename.endsWith(".json"))
+    for (const _filename of await readdir(uploadDirectory)) {
+        if (!_filename.endsWith(".json"))
             continue;
 
-        const existingId = filename.slice(0, -5);
+        const existingId = _filename.slice(0, -5);
 
         try {
-            const existing = JSON.parse(await readFile(path.join(uploadDirectory, filename), "utf8")) as ResumableUploadSession;
+            // eslint-disable-next-line no-await-in-loop
+            const existing = JSON.parse(await readFile(path.join(
+                uploadDirectory,
+                _filename,
+            ), "utf8")) as ResumableUploadSession;
 
             if (Date.now() - new Date(existing.createdAt).getTime() > sessionLifetimeMilliseconds)
+                // eslint-disable-next-line no-await-in-loop
                 await removeUploadSession(existingId);
         } catch {
-            await rm(path.join(uploadDirectory, filename), { force: true });
+            // eslint-disable-next-line no-await-in-loop
+            await rm(path.join(uploadDirectory, _filename), { force: true });
         }
     }
 
@@ -92,7 +115,7 @@ export async function createUploadSession(filename: string, size: number): Promi
 
 /**
  * Returns the server-confirmed upload offset.
- * @param id - The upload session ID.
+ * @param id - The ID of the upload session to query.
  * @returns The session and current byte offset.
  */
 export async function getUploadSession(id: string): Promise<ResumableUploadStatus> {
@@ -129,6 +152,7 @@ export async function appendUploadChunk(id: string, offset: number, chunk: Uint8
         let written = 0;
 
         while (written < chunk.byteLength) {
+            // eslint-disable-next-line no-await-in-loop
             const result = await file.write(chunk, written, chunk.byteLength - written, size + written);
 
             if (result.bytesWritten === 0)
@@ -147,7 +171,7 @@ export async function appendUploadChunk(id: string, offset: number, chunk: Uint8
 
 /**
  * Removes an upload session and its temporary file.
- * @param id - The upload session ID.
+ * @param id - The ID of the upload session to remove.
  */
 export async function removeUploadSession(id: string): Promise<void> {
     await Promise.all([
@@ -161,7 +185,7 @@ export async function removeUploadSession(id: string): Promise<void> {
  * @param id - The upload session ID.
  * @returns The validated session and path to its temporary video.
  */
-export async function getCompletedUpload(id: string): Promise<{ session: ResumableUploadSession; filePath: string }> {
+export async function getCompletedUpload(id: string): Promise<{ session: ResumableUploadSession; filePath: string; }> {
     const session = await readSession(id);
     const filePath = partPath(id);
     const { size } = await stat(filePath);
@@ -169,5 +193,5 @@ export async function getCompletedUpload(id: string): Promise<{ session: Resumab
     if (size !== session.size)
         throw new Error(`Upload is incomplete: ${size} of ${session.size} bytes received`);
 
-    return { session, filePath };
+    return { filePath, session };
 }
