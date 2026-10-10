@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { createWriteStream } from "node:fs";
-import { mkdir, open, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, open, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { maximumVideoSize } from "lib/matchday";
 
@@ -58,6 +57,23 @@ export async function createUploadSession(filename: string, size: number): Promi
         throw new Error("The video must be between 1 byte and 5 GB");
 
     await mkdir(uploadDirectory, { recursive: true });
+
+    // Expired sessions are removed opportunistically whenever a new upload begins.
+    for (const filename of await readdir(uploadDirectory)) {
+        if (!filename.endsWith(".json"))
+            continue;
+
+        const existingId = filename.slice(0, -5);
+
+        try {
+            const existing = JSON.parse(await readFile(path.join(uploadDirectory, filename), "utf8")) as ResumableUploadSession;
+
+            if (Date.now() - new Date(existing.createdAt).getTime() > sessionLifetimeMilliseconds)
+                await removeUploadSession(existingId);
+        } catch {
+            await rm(path.join(uploadDirectory, filename), { force: true });
+        }
+    }
 
     const session: ResumableUploadSession = {
         createdAt: new Date().toISOString(),
