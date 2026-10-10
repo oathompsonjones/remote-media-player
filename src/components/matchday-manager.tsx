@@ -246,7 +246,7 @@ export function MatchdayManager({ authenticated, initialMetadata }: Props): Reac
                 const chunk = file.slice(offset, Math.min(offset + chunkSize, file.size));
                 let acknowledged = false;
 
-                for (let attempt = 0; attempt < 8 && !acknowledged; attempt += 1) {
+                for (let attempt = 0; !acknowledged; attempt += 1) {
                     try {
                         const response = await fetch(`/api/matchday/uploads/${sessionId}`, {
                             body: chunk,
@@ -279,9 +279,6 @@ export function MatchdayManager({ authenticated, initialMetadata }: Props): Reac
                     } catch (error) {
                         if (!(error instanceof TypeError))
                             throw error;
-
-                        if (attempt === 7)
-                            throw new Error("Connection interrupted. Your upload is saved; press Upload and activate to resume.");
 
                         await new Promise<void>((resolve) => setTimeout(resolve, Math.min(1000 * 2 ** attempt, 10000)));
 
