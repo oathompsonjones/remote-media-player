@@ -3,7 +3,7 @@
     "type": "module",
     "scripts": {
         "build": "tsc -p tsconfig.json && cp playback.html dist/playback.html",
-        "lint": "pnpm --dir .. exec eslint --config display-device/eslint.config.mjs display-device",
+        "lint": "pnpm --dir .. exec eslint --fix --config display-device/eslint.config.mjs display-device",
         "start": "node dist/display.js"
     },
     "devDependencies": {

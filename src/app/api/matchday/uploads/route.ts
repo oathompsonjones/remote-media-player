@@ -1,0 +1,31 @@
+import { createUploadSession, maximumChunkSize } from "lib/resumable-upload";
+import { NextResponse } from "next/server";
+import { hasMatchdaySession } from "lib/auth";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+/**
+ * Starts a new upload session for a matchday video.
+ * @param request - The incoming HTTP request containing the upload details.
+ * @returns A JSON response containing the upload session details or an error message.
+ */
+export async function POST(request: Request): Promise<NextResponse> {
+    if (!await hasMatchdaySession())
+        return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+
+    try {
+        const body = await request.json() as { filename?: unknown; size?: unknown; };
+
+        if (typeof body.filename !== "string" || typeof body.size !== "number")
+            return NextResponse.json({ error: "A filename and file size are required" }, { status: 400 });
+
+        const session = await createUploadSession(body.filename, body.size);
+
+        return NextResponse.json({ ...session, chunkSize: maximumChunkSize }, { status: 201 });
+    } catch (error) {
+        const message = error instanceof Error ? error.message : "Could not start upload";
+
+        return NextResponse.json({ error: message }, { status: 400 });
+    }
+}

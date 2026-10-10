@@ -49,11 +49,21 @@ function isInProgress(state: States): boolean {
  * @returns The appropriate refresh warning message.
  */
 function refreshWarning(state: States): ReactNode {
-    if (state === States.Uploading)
-        return <Typography color="textSecondary">DO NOT LEAVE OR REFRESH THE PAGE</Typography>;
+    if (state === States.Uploading) {
+        return (
+            <Typography color="textSecondary">
+                If interrupted, reselect the same file to resume the upload.
+            </Typography>
+        );
+    }
 
-    if (state === States.OptimisingForDisplay)
-        return <Typography color="textSecondary">It is safe to leave or refresh the page</Typography>;
+    if (state === States.OptimisingForDisplay) {
+        return (
+            <Typography color="textSecondary">
+                It is safe to leave or refresh the page
+            </Typography>
+        );
+    }
 
     return null;
 }
@@ -105,17 +115,6 @@ function formatUploadedAt(uploadedAt: string): string {
         weekday: "long",
         year: "numeric",
     }).format(new Date(uploadedAt));
-}
-
-/**
- * Extracts an upload error message from a response.
- * @param responseText - The response body.
- * @returns The error message.
- */
-function parseUploadError(responseText: string): string {
-    const response = JSON.parse(responseText) as UploadError;
-
-    return response.error ?? "Upload failed; the existing video remains active.";
 }
 
 /**
@@ -199,7 +198,8 @@ export function MatchdayManager({ authenticated, initialMetadata }: Props): Reac
      * Uploads and activates the selected video.
      * @param event - The form submit event.
      */
-    function upload(event: FormEvent<HTMLFormElement>): void {
+    // eslint-disable-next-line max-statements
+    async function upload(event: FormEvent<HTMLFormElement>): Promise<void> {
         event.preventDefault();
 
         if (!file) {
@@ -210,36 +210,143 @@ export function MatchdayManager({ authenticated, initialMetadata }: Props): Reac
 
         setError("");
         setState(States.Uploading);
-        setProgress(0);
 
-        const request = new XMLHttpRequest();
-
-        request.upload.onprogress = (progressEvent): void => {
-            if (progressEvent.lengthComputable)
-                setProgress(Math.round(progressEvent.loaded / progressEvent.total * 100));
-        };
-
-        request.onload = (): void => {
-            if (request.status >= 200 && request.status < 300) {
-                setMetadata(JSON.parse(request.responseText) as VideoMetadata);
-                setState(States.Idle);
-                setFile(null);
-                setProgress(0);
-            } else {
-                setState(States.UploadFailed);
-                setError(parseUploadError(request.responseText));
+        const storageKey = `matchday-upload:${file.name}:${file.size}:${file.lastModified}`;
+        const readError = async (response: Response): Promise<string> => {
+            try {
+                return ((await response.json()) as UploadError).error ?? `Request failed (${response.status})`;
+            } catch {
+                return `Request failed (${response.status})`;
             }
         };
 
-        request.onerror = (): void => {
-            setState(States.UploadFailed);
-            setError("The connection failed; the existing video remains active.");
-        };
+        try {
+            let sessionId = localStorage.getItem(storageKey);
+            let offset = 0;
 
-        request.open("POST", "/api/matchday/upload");
-        request.setRequestHeader("content-type", "video/mp4");
-        request.setRequestHeader("x-matchday-filename", file.name);
-        request.send(file);
+            if (sessionId !== null) {
+                const resume = await fetch(`/api/matchday/uploads/${sessionId}`, { method: "HEAD" });
+
+                if (resume.ok && Number(resume.headers.get("upload-length")) === file.size) {
+                    offset = Number(resume.headers.get("upload-offset"));
+                } else {
+                    localStorage.removeItem(storageKey);
+                    sessionId = null;
+                }
+            }
+
+            if (sessionId === null) {
+                const create = await fetch("/api/matchday/uploads", {
+                    body: JSON.stringify({ filename: file.name, size: file.size }),
+                    headers: {
+                        // eslint-disable-next-line @typescript-eslint/naming-convention
+                        "content-type": "application/json",
+                    },
+                    method: "POST",
+                });
+
+                if (!create.ok)
+                    throw new Error(await readError(create));
+
+                const session = (await create.json()) as { id: string; offset: number; chunkSize: number; };
+
+                sessionId = session.id;
+                ({ offset } = session);
+                localStorage.setItem(storageKey, sessionId);
+            }
+
+            const chunkSize = 8 * 1024 * 1024;
+
+            while (offset < file.size) {
+                const chunk = file.slice(offset, Math.min(offset + chunkSize, file.size));
+                let acknowledged = false;
+
+                for (let attempt = 0; !acknowledged; attempt += 1) {
+                    try {
+                        // eslint-disable-next-line no-await-in-loop
+                        const response = await fetch(`/api/matchday/uploads/${sessionId}`, {
+                            body: chunk,
+                            headers: {
+                                // eslint-disable-next-line @typescript-eslint/naming-convention
+                                "content-type": "application/offset+octet-stream", "upload-offset": String(offset),
+                            },
+                            method: "PATCH",
+                        });
+
+                        if (response.ok) {
+                            offset = Number(response.headers.get("upload-offset"));
+                            acknowledged = true;
+                        } else {
+                            // eslint-disable-next-line no-await-in-loop
+                            const message = await readError(response);
+
+                            // eslint-disable-next-line max-depth
+                            if (response.status === 409) {
+                                // eslint-disable-next-line no-await-in-loop
+                                const status = await fetch(`/api/matchday/uploads/${sessionId}`, { method: "HEAD" });
+
+                                // eslint-disable-next-line max-depth
+                                if (status.ok) {
+                                    const confirmedOffset = Number(status.headers.get("upload-offset"));
+
+                                    // eslint-disable-next-line max-depth
+                                    if (confirmedOffset !== offset) {
+                                        offset = confirmedOffset;
+                                        acknowledged = true;
+                                        continue;
+                                    }
+                                }
+                            }
+
+                            throw new Error(message);
+                        }
+                    } catch (e) {
+                        if (!(e instanceof TypeError))
+                            throw e;
+
+                        // eslint-disable-next-line no-await-in-loop, no-promise-executor-return
+                        await new Promise<void>((resolve) => setTimeout(resolve, Math.min(1000 * 2 ** attempt, 10000)));
+
+                        // eslint-disable-next-line no-await-in-loop
+                        const status = await fetch(`/api/matchday/uploads/${sessionId}`, { method: "HEAD" });
+
+                        if (status.ok) {
+                            const confirmedOffset = Number(status.headers.get("upload-offset"));
+
+                            // eslint-disable-next-line max-depth
+                            if (confirmedOffset > offset) {
+                                offset = confirmedOffset;
+                                acknowledged = true;
+                            }
+                        }
+
+                        if (e instanceof Error && e.message.startsWith("Upload session expired"))
+                            throw e;
+                    }
+                }
+
+                setProgress(Math.min(99, Math.round(offset / file.size * 100)));
+            }
+
+            setState(States.OptimisingForDisplay);
+            setProgress(0);
+
+            const complete = await fetch(`/api/matchday/uploads/${sessionId}/complete`, { method: "POST" });
+
+            if (!complete.ok)
+                throw new Error(await readError(complete));
+
+            setMetadata(await complete.json() as VideoMetadata);
+            localStorage.removeItem(storageKey);
+            setState(States.Idle);
+            setFile(null);
+            setProgress(0);
+        } catch (uploadError) {
+            setState(States.UploadFailed);
+            setError(uploadError instanceof Error
+                ? uploadError.message
+                : "Upload failed; the existing video remains active.");
+        }
     }
 
     /**
@@ -367,6 +474,7 @@ export function MatchdayManager({ authenticated, initialMetadata }: Props): Reac
                     {/* eslint-disable react/jsx-no-bind */}
                     <Stack
                         component="form"
+                        // eslint-disable-next-line @typescript-eslint/no-misused-promises
                         onSubmit={upload}
                         spacing={2}
                         sx={{ maxWidth: "100%", minWidth: 0, overflow: "hidden", width: "100%" }}

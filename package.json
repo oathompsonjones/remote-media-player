@@ -9,7 +9,7 @@
         "dev": "next dev",
         "build": "next build",
         "start": "next start",
-        "lint": "eslint . && pnpm --dir display-device lint"
+        "lint": "eslint . --fix && pnpm --dir display-device lint"
     },
     "author": "oathompsonjones",
     "license": "MIT",
