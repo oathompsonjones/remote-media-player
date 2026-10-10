@@ -199,7 +199,7 @@ export function MatchdayManager({ authenticated, initialMetadata }: Props): Reac
      * Uploads and activates the selected video.
      * @param event - The form submit event.
      */
-    function upload(event: FormEvent<HTMLFormElement>): void {
+    async function upload(event: FormEvent<HTMLFormElement>): Promise<void> {
         event.preventDefault();
 
         if (!file) {
@@ -210,36 +210,125 @@ export function MatchdayManager({ authenticated, initialMetadata }: Props): Reac
 
         setError("");
         setState(States.Uploading);
-        setProgress(0);
 
-        const request = new XMLHttpRequest();
-
-        request.upload.onprogress = (progressEvent): void => {
-            if (progressEvent.lengthComputable)
-                setProgress(Math.round(progressEvent.loaded / progressEvent.total * 100));
-        };
-
-        request.onload = (): void => {
-            if (request.status >= 200 && request.status < 300) {
-                setMetadata(JSON.parse(request.responseText) as VideoMetadata);
-                setState(States.Idle);
-                setFile(null);
-                setProgress(0);
-            } else {
-                setState(States.UploadFailed);
-                setError(parseUploadError(request.responseText));
+        const storageKey = `matchday-upload:${file.name}:${file.size}:${file.lastModified}`;
+        const readError = async (response: Response): Promise<string> => {
+            try {
+                return ((await response.json()) as UploadError).error ?? `Request failed (${response.status})`;
+            } catch {
+                return `Request failed (${response.status})`;
             }
         };
 
-        request.onerror = (): void => {
-            setState(States.UploadFailed);
-            setError("The connection failed; the existing video remains active.");
-        };
+        try {
+            let sessionId = localStorage.getItem(storageKey);
+            let offset = 0;
 
-        request.open("POST", "/api/matchday/upload");
-        request.setRequestHeader("content-type", "video/mp4");
-        request.setRequestHeader("x-matchday-filename", file.name);
-        request.send(file);
+            if (sessionId) {
+                const resume = await fetch(`/api/matchday/uploads/${sessionId}`, { method: "HEAD" });
+
+                if (resume.ok && Number(resume.headers.get("upload-length")) === file.size) {
+                    offset = Number(resume.headers.get("upload-offset"));
+                } else {
+                    localStorage.removeItem(storageKey);
+                    sessionId = null;
+                }
+            }
+
+            if (!sessionId) {
+                const create = await fetch("/api/matchday/uploads", {
+                    body: JSON.stringify({ filename: file.name, size: file.size }),
+                    headers: { "content-type": "application/json" },
+                    method: "POST",
+                });
+
+                if (!create.ok)
+                    throw new Error(await readError(create));
+
+                const session = (await create.json()) as { id: string; offset: number; chunkSize: number };
+                sessionId = session.id;
+                offset = session.offset;
+                localStorage.setItem(storageKey, sessionId);
+            }
+
+            const chunkSize = 8 * 1024 * 1024;
+
+            while (offset < file.size) {
+                const chunk = file.slice(offset, Math.min(offset + chunkSize, file.size));
+                let acknowledged = false;
+
+                for (let attempt = 0; attempt < 8 && !acknowledged; attempt += 1) {
+                    try {
+                        const response = await fetch(`/api/matchday/uploads/${sessionId}`, {
+                            body: chunk,
+                            headers: { "content-type": "application/offset+octet-stream", "upload-offset": String(offset) },
+                            method: "PATCH",
+                        });
+
+                        if (response.ok) {
+                            offset = Number(response.headers.get("upload-offset"));
+                            acknowledged = true;
+                        } else {
+                            const message = await readError(response);
+
+                            if (response.status === 409) {
+                                const status = await fetch(`/api/matchday/uploads/${sessionId}`, { method: "HEAD" });
+
+                                if (status.ok) {
+                                    const confirmedOffset = Number(status.headers.get("upload-offset"));
+
+                                    if (confirmedOffset > offset) {
+                                        offset = confirmedOffset;
+                                        acknowledged = true;
+                                        continue;
+                                    }
+                                }
+                            }
+
+                            throw new Error(message);
+                        }
+                    } catch (error) {
+                        if (attempt === 7)
+                            throw new Error("Connection interrupted. Your upload is saved; press Upload and activate to resume.");
+
+                        await new Promise<void>((resolve) => setTimeout(resolve, Math.min(1000 * 2 ** attempt, 10000)));
+
+                        const status = await fetch(`/api/matchday/uploads/${sessionId}`, { method: "HEAD" });
+
+                        if (status.ok) {
+                            const confirmedOffset = Number(status.headers.get("upload-offset"));
+
+                            if (confirmedOffset > offset) {
+                                offset = confirmedOffset;
+                                acknowledged = true;
+                            }
+                        }
+
+                        if (error instanceof Error && error.message.startsWith("Upload session expired"))
+                            throw error;
+                    }
+                }
+
+                setProgress(Math.min(99, Math.round(offset / file.size * 100)));
+            }
+
+            setState(States.OptimisingForDisplay);
+            setProgress(0);
+
+            const complete = await fetch(`/api/matchday/uploads/${sessionId}/complete`, { method: "POST" });
+
+            if (!complete.ok)
+                throw new Error(await readError(complete));
+
+            setMetadata(await complete.json() as VideoMetadata);
+            localStorage.removeItem(storageKey);
+            setState(States.Idle);
+            setFile(null);
+            setProgress(0);
+        } catch (uploadError) {
+            setState(States.UploadFailed);
+            setError(uploadError instanceof Error ? uploadError.message : "Upload failed; the existing video remains active.");
+        }
     }
 
     /**
