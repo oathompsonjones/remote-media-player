@@ -50,7 +50,7 @@ function isInProgress(state: States): boolean {
  */
 function refreshWarning(state: States): ReactNode {
     if (state === States.Uploading)
-        return <Typography color="textSecondary">DO NOT LEAVE OR REFRESH THE PAGE</Typography>;
+        return <Typography color="textSecondary">If interrupted, reselect the same file to resume the upload.</Typography>;
 
     if (state === States.OptimisingForDisplay)
         return <Typography color="textSecondary">It is safe to leave or refresh the page</Typography>;
@@ -105,17 +105,6 @@ function formatUploadedAt(uploadedAt: string): string {
         weekday: "long",
         year: "numeric",
     }).format(new Date(uploadedAt));
-}
-
-/**
- * Extracts an upload error message from a response.
- * @param responseText - The response body.
- * @returns The error message.
- */
-function parseUploadError(responseText: string): string {
-    const response = JSON.parse(responseText) as UploadError;
-
-    return response.error ?? "Upload failed; the existing video remains active.";
 }
 
 /**
