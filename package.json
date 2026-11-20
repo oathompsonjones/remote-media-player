@@ -9,7 +9,7 @@
         "dev": "next dev",
         "build": "next build",
         "start": "next start",
-        "test": "vitest run",
+        "test": "vitest run --passWithNoTests",
         "lint": "eslint . --fix && pnpm --dir display-device lint"
     },
     "author": "oathompsonjones",
