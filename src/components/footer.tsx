@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 
 /**
  * Contains the footer element.
- * @returns The page footer.
+ * @returns A page footer.
  */
 export function Footer(): ReactNode {
     const currentYear = new Date().getUTCFullYear();
@@ -25,7 +25,12 @@ export function Footer(): ReactNode {
                 </Typography>
                 <Typography variant="caption">
                     Website designed and developed by{" "}
-                    <Link href="https://oathompsonjones.co.uk">Oliver Jones (oathompsonjones)</Link>.
+                    <Link
+                        href="https://oathompsonjones.co.uk"
+                        style={{ color: "white", fontWeight: "bold", textDecoration: "none" }}
+                    >
+                        Oliver Jones (oathompsonjones)
+                    </Link>.
                 </Typography>
             </Container>
         </Box>
