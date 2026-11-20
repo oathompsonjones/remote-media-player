@@ -11,7 +11,15 @@ export function Footer(): ReactNode {
 
     return (
         <Box component="footer" sx={{ py: 1 }}>
-            <Container maxWidth="lg" sx={{ display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center" }}>
+            <Container
+                maxWidth="lg"
+                sx={{
+                    alignItems: "center",
+                    display: "flex",
+                    flexDirection: "column",
+                    justifyContent: "center",
+                }}
+            >
                 <Typography variant="caption">
                     © {currentYear > 2026 ? `2026-${currentYear}` : currentYear} Oliver Jones
                 </Typography>
